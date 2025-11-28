@@ -1,0 +1,62 @@
+# Example configuration file
+# Copy this to config.yaml and customize for your needs
+
+git:
+  remote_url: "https://github.com/user/your-repo.git"
+  branch: "main"
+  local_path: "./package_source"
+
+build:
+  source_dir: "./package_source"
+  build_dir: "./build"
+  compilers:
+    fortran:
+      command: "gfortran"
+      flags: ["-O2", "-Wall", "-fPIC"]
+    c:
+      command: "gcc"
+      flags: ["-O2", "-Wall", "-std=c11"]
+    cpp:
+      command: "g++"
+      flags: ["-O2", "-Wall", "-std=c++17"]
+  build_command: "make"
+  build_args: []
+  environment:
+    # Additional environment variables
+    # CC: "gcc"
+    # CXX: "g++"
+    # FC: "gfortran"
+
+llm:
+  provider: "openai"  # Options: "openai", "anthropic", "local"
+  model: "gpt-4"
+  api_key_env: "OPENAI_API_KEY"
+  max_tokens: 2000
+  temperature: 0.3  # Lower temperature for more deterministic analysis
+
+tests:
+  test_dir: "./tests"
+  reference_dir: "./reference_data"
+  tolerance: 1e-6  # Numerical comparison tolerance
+  timeout: 3600     # Test timeout in seconds
+  test_configs:
+    - name: "test_basic"
+      command: "./build/your_program"
+      args: ["--test", "basic"]
+      reference_file: "reference_data/test_basic.out"
+    - name: "test_advanced"
+      command: "./build/your_program"
+      args: ["--test", "advanced"]
+      reference_file: "reference_data/test_advanced.out"
+
+reporting:
+  output_dir: "./reports"
+  format: ["html", "json"]
+  include_llm_analysis: true
+  timestamp_format: "%Y-%m-%d_%H-%M-%S"
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_dir: "./logs"
+  log_file: "autotest_{timestamp}.log"
+

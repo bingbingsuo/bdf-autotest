@@ -1,0 +1,53 @@
+name: BDF Auto Test CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  bdf-autotest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies (BLAS/LAPACK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libblas-dev liblapack-dev gfortran
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run BDF Auto Test (skip git pull and setup)
+        env:
+          # Set this if you want to enable remote LLM in CI
+          # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          # Adjust arguments as needed; here we skip git and setup to avoid external SSH access
+          python -m src.orchestrator --config config/config.yaml --skip-git --skip-build
+
+      - name: Generate comparison of latest reports (if possible)
+        run: |
+          python -m src.orchestrator compare -n 2 || echo "Comparison skipped (not enough reports yet)"
+
+      - name: Upload reports as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdf-autotest-reports
+          path: |
+            reports/**/*.html
+            reports/**/*.json
+            logs/**/*.log
+
+
