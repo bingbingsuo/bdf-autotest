@@ -93,9 +93,13 @@ class BuildManager:
     def run(self) -> BuildResult:
         """Execute the build command"""
         self.logger.info("Starting build inside %s", self.source_dir)
+        preserve_build = self.build_cfg.get("preserve_build", False)
         if self.build_dir.exists():
-            self.logger.info("Removing existing build directory at %s", self.build_dir)
-            shutil.rmtree(self.build_dir)
+            if preserve_build:
+                self.logger.info("Preserving existing build directory at %s (preserve_build=true)", self.build_dir)
+            else:
+                self.logger.info("Removing existing build directory at %s", self.build_dir)
+                shutil.rmtree(self.build_dir)
         self.build_dir.mkdir(parents=True, exist_ok=True)
         setup_log = self.build_dir / "setup.log"
 

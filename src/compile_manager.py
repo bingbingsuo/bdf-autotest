@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import time
+from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -25,7 +26,16 @@ class CompileManager:
         )
         self.working_dir = Path(compile_cfg.get("working_dir", default_working_dir)).resolve()
         self.command = compile_cfg.get("command", "make")
-        self.jobs = compile_cfg.get("jobs")
+
+        # Determine number of parallel jobs:
+        # - if compile.jobs is omitted / null / "auto": derive from CPU count
+        # - otherwise: use validated integer from config
+        raw_jobs = compile_cfg.get("jobs", None)
+        if raw_jobs is None or raw_jobs == "auto":
+            detected = cpu_count() or 1
+            self.jobs = max(1, int(detected))
+        else:
+            self.jobs = int(raw_jobs)
         self.target = compile_cfg.get("target")
         self.extra_args = compile_cfg.get("extra_args", [])
         self.log_file = Path(compile_cfg.get("log_file", "make.log"))

@@ -49,6 +49,10 @@ build:
   # Options: "release", "debug"
   build_mode: "release"
   
+  # Preserve build directory (if true, don't remove existing build dir before setup)
+  # Useful for development: skip git/setup, just run make in build directory
+  preserve_build: false  # Set to true to keep build directory between runs
+  
   # Always used options
   always_use:
     - "--int64"
@@ -62,8 +66,8 @@ compile:
   working_dir: "./package_source/build"
   # Base compile command
   command: "make"
-  # Number of parallel jobs for -jN
-  jobs: 8
+  # Number of parallel jobs for -jN (set to a positive integer, or use null / "auto" to detect from CPU count)
+  jobs: "auto"
   # Target to build after setup
   target: "install"
   # Additional make arguments if needed

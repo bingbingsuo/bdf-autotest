@@ -181,6 +181,102 @@ def _fake_successful_build(build_manager: BuildManager) -> BuildResult:
     )
 
 
+def run_input_command(
+    input_file: str,
+    config_path: str = "config/config.yaml",
+) -> int:
+    """
+    Run a calculation with an input file directly, printing stdout/stderr to console.
+    
+    Args:
+        input_file: Path to input file
+        config_path: Path to configuration file
+    """
+    import subprocess
+    import os
+    import random
+    import shutil
+    import shlex
+    
+    loader = ConfigLoader(config_path)
+    config = loader.load()
+    
+    build_cfg = config.get("build", {})
+    tests_cfg = config.get("tests", {})
+    source_dir = Path(build_cfg.get("source_dir", "./package_source")).resolve()
+    build_dir = source_dir / build_cfg.get("build_dir", "build")
+    bdf_home = build_dir / "bdf-pkg-full"
+    
+    # Check if BDFHOME exists
+    if not bdf_home.exists():
+        print(f"Error: BDF installation not found at {bdf_home}")
+        print("Please run the full workflow first (without --skip-build) to build the package.")
+        return 1
+    
+    # Resolve input file path
+    input_path = Path(input_file).resolve()
+    if not input_path.exists():
+        print(f"Error: Input file not found: {input_file}")
+        return 1
+    
+    # Build command using test configuration
+    test_command_template = tests_cfg.get("test_command", "{BDFHOME}/sbin/bdfdrv.py")
+    test_args_template = tests_cfg.get("test_args_template", "-r {input_file}")
+    
+    command_str = test_command_template.replace("{BDFHOME}", str(bdf_home))
+    command = shlex.split(command_str)
+    test_args_template_list = shlex.split(test_args_template)
+    args = [arg.format(input_file=input_path.name) for arg in test_args_template_list]
+    command.extend(args)
+    
+    # Prepare environment
+    env = os.environ.copy()
+    env["BDFHOME"] = str(bdf_home)
+    
+    # Create temporary directory for this run
+    env_cfg = tests_cfg.get("env", {})
+    tmp_template = str(env_cfg.get("BDF_TMPDIR", "/tmp/$RANDOM"))
+    rnd = random.randint(0, 999999)
+    tmp_dir = Path(tmp_template.replace("$RANDOM", str(rnd)))
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    env["BDF_TMPDIR"] = str(tmp_dir)
+    
+    # OpenMP settings
+    env["OMP_NUM_THREADS"] = str(env_cfg.get("OMP_NUM_THREADS", os.cpu_count() or 1))
+    env["OMP_STACKSIZE"] = str(env_cfg.get("OMP_STACKSIZE", "512M"))
+    
+    # Copy input file to working directory (build/check)
+    check_dir = build_dir / "check"
+    check_dir.mkdir(parents=True, exist_ok=True)
+    working_input = check_dir / input_path.name
+    shutil.copy2(input_path, working_input)
+    
+    try:
+        # Run the command and stream output directly
+        print(f"Running: {' '.join(command)}")
+        print(f"Input file: {input_path}")
+        print(f"Working directory: {check_dir}")
+        print("-" * 80)
+        
+        process = subprocess.run(
+            command,
+            cwd=check_dir,
+            env=env,
+            check=False,
+        )
+        
+        print("-" * 80)
+        print(f"Exit code: {process.returncode}")
+        return process.returncode
+    finally:
+        # Clean up temporary directory
+        try:
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir)
+        except Exception:
+            pass
+
+
 def compare_reports_command(
     reports_dir: str = "./reports",
     before: Optional[str] = None,
@@ -256,6 +352,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     compare_parser.add_argument("--after", help="Path to later report")
     compare_parser.add_argument("-n", type=int, default=2, help="Compare N most recent reports (default: 2)")
     
+    # Run input file directly
+    run_parser = subparsers.add_parser("run-input", help="Run a calculation with an input file directly")
+    run_parser.add_argument("input_file", help="Path to input file")
+    run_parser.add_argument("--config", default="config/config.yaml", help="Path to configuration file")
+    
     return parser.parse_args(argv)
 
 
@@ -268,6 +369,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 before=args.before,
                 after=args.after,
                 n=args.n,
+            )
+        elif args.command == "run-input":
+            return run_input_command(
+                input_file=args.input_file,
+                config_path=args.config,
             )
         else:
             # Determine requested profile override (CLI has precedence over config)

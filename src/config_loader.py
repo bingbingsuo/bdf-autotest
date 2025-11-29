@@ -126,11 +126,14 @@ class ConfigLoader:
 
         self._require_strings(compile_cfg, ["working_dir", "command", "log_file"], errors, section="compile")
 
-        jobs_value = self._coerce_number(compile_cfg.get("jobs"), integer=True, positive=True)
-        if jobs_value is None:
-            errors.append("'compile.jobs' must be a positive integer.")
-        else:
-            compile_cfg["jobs"] = jobs_value
+        # jobs can be omitted or set to null/"auto" to enable automatic detection from CPU count.
+        raw_jobs = compile_cfg.get("jobs", None)
+        if raw_jobs is not None and raw_jobs != "auto":
+            jobs_value = self._coerce_number(raw_jobs, integer=True, positive=True)
+            if jobs_value is None:
+                errors.append("'compile.jobs' must be a positive integer when specified.")
+            else:
+                compile_cfg["jobs"] = jobs_value
 
         extra_args = compile_cfg.get("extra_args", [])
         if not isinstance(extra_args, list):
