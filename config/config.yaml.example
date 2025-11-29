@@ -1,53 +1,172 @@
-# Example configuration file
-# Copy this to config.yaml and customize for your needs
+# Example configuration file for BDF Auto Test Framework
+# Copy this to config.yaml and customize for your environment
 
 git:
-  remote_url: "https://github.com/user/your-repo.git"
-  branch: "main"
+  # Example: "ssh://user@host:port/path/to/bdf-pkg"
+  remote_url: "ssh://user@host:port/path/to/bdf-pkg"
+  branch: "master"
   local_path: "./package_source"
 
 build:
+  # Root directory where git pulls the code
   source_dir: "./package_source"
-  build_dir: "./build"
+  # Build directory inside source_dir (relative path)
+  build_dir: "build"
+  # Command to initialize/configure the build (run from source_dir)
+  build_command: "./setup"
+  
+  # Compiler combinations (choose one)
+  # Options: "gnu", "intel", "llvm"
+  compiler_set: "gnu"
   compilers:
-    fortran:
-      command: "gfortran"
-      flags: ["-O2", "-Wall", "-fPIC"]
-    c:
-      command: "gcc"
-      flags: ["-O2", "-Wall", "-std=c11"]
-    cpp:
-      command: "g++"
-      flags: ["-O2", "-Wall", "-std=c++17"]
-  build_command: "make"
-  build_args: []
-  environment:
-    # Additional environment variables
-    # CC: "gcc"
-    # CXX: "g++"
-    # FC: "gfortran"
+    gnu:
+      fortran: "gfortran"
+      c: "gcc"
+      cpp: "g++"
+    intel:
+      fortran: "ifx"
+      c: "icx"
+      cpp: "icpx"
+    llvm:
+      fortran: "flang"
+      c: "clang"
+      cpp: "clang++"
+  
+  # Math library configuration
+  # Option 1: Use MKL library
+  use_mkl: false          # Set to true if you want to use Intel MKL
+  mkl_option: "TBB"       # Value for --mkl option (ignored if use_mkl: false)
+  
+  # Option 2: Custom math library (configure below)
+  math_library:
+    # Example placeholders; replace with your LAPACK/BLAS installation paths
+    mathinclude_flags: "-I/path/to/lapack/include -I/path/to/cblas/include"
+    mathlib_flags: "-L/path/to/lapack/lib -llapack -lblas -lcblas -llapacke"
+    blasdir: "/path/to/blas"
+    lapackdir: "/path/to/lapack"
+  
+  # Build mode
+  # Options: "release", "debug"
+  build_mode: "release"
+  
+  # Always used options
+  always_use:
+    - "--int64"
+    - "--omp"
+  
+  # Additional build arguments (optional)
+  additional_args: []
+
+compile:
+  # Run make inside build directory
+  working_dir: "./package_source/build"
+  # Base compile command
+  command: "make"
+  # Number of parallel jobs for -jN
+  jobs: 8
+  # Target to build after setup
+  target: "install"
+  # Additional make arguments if needed
+  extra_args: []
+  # Capture stdout/stderr for analysis
+  log_file: "make.log"
+  # Additional environment variables if needed
+  environment: {}
 
 llm:
-  provider: "openai"  # Options: "openai", "anthropic", "local"
-  model: "gpt-4"
-  api_key_env: "OPENAI_API_KEY"
+  # Overall behavior:
+  # - local : only use local LLM
+  # - remote: only use remote LLM (e.g. OpenAI)
+  # - auto  : try local first, fall back to remote if local fails
+  mode: "auto"
+  # Analysis mode:
+  # - simple: Extract basic info (failed tests, error messages, modules) without LLM call
+  # - detailed: Use LLM for comprehensive analysis (requires LLM access)
+  analysis_mode: "simple"
   max_tokens: 2000
   temperature: 0.3  # Lower temperature for more deterministic analysis
 
+  local:
+    enabled: true
+    # Example local endpoint (e.g. Ollama)
+    endpoint: "http://localhost:11434"
+    model: "my-local-llm"
+    # Timeout in seconds for local LLM requests
+    timeout: 300
+
+  remote:
+    enabled: true
+    provider: "openai"          # Remote provider, currently 'openai' is supported
+    model: "gpt-4o"             # OpenAI chat model to use
+    api_key_env: "OPENAI_API_KEY"  # Environment variable holding your OpenAI API key
+
 tests:
-  test_dir: "./tests"
-  reference_dir: "./reference_data"
-  tolerance: 1e-6  # Numerical comparison tolerance
-  timeout: 3600     # Test timeout in seconds
-  test_configs:
-    - name: "test_basic"
-      command: "./build/your_program"
-      args: ["--test", "basic"]
-      reference_file: "reference_data/test_basic.out"
-    - name: "test_advanced"
-      command: "./build/your_program"
-      args: ["--test", "advanced"]
-      reference_file: "reference_data/test_advanced.out"
+  # Test directories are relative to source_dir (inside the repository)
+  test_dir: "tests/input"          # Test input directory inside source_dir
+  reference_dir: "tests/check"     # Reference data directory inside source_dir
+  tolerance: 1e-6                  # Base numerical comparison tolerance (not used for CHECKDATA rules)
+  timeout: 3600                    # Test timeout in seconds
+
+  # Limit which tests are executed by numeric ID (testNNN)
+  enabled_range:
+    min: 1
+    max: 161
+
+  # Tolerance profiles:
+  # - strict: use base CHECKDATA tolerances
+  # - loose: multiply all CHECKDATA tolerances by the given scale factor
+  tolerance_mode: "strict"  # Options: "strict", "loose"
+  tolerance_scale:
+    strict: 1.0
+    loose: 5.0
+
+  # Optional named test profiles (for convenience)
+  profiles:
+    smoke:
+      min: 1
+      max: 5
+    core:
+      min: 1
+      max: 20
+    full:
+      min: 1
+      max: 161
+
+  # Active test profile (overrides enabled_range)
+  profile: core
+
+  # Maximum number of tests to run in parallel.
+  # Combined with OMP_NUM_THREADS this controls total core usage.
+  # For example: max_parallel=2 and OMP_NUM_THREADS=4 → up to ~8 threads.
+  max_parallel: 2
+
+  env:
+    # If OMP_NUM_THREADS is not set here, it will be chosen automatically as:
+    #   max(1, num_cores / max_parallel)
+    # You can uncomment the next line to override the automatic value.
+    # OMP_NUM_THREADS: 4
+    OMP_STACKSIZE: "512M"        # Default OpenMP stack size
+    BDF_TMPDIR: "/tmp/$RANDOM"   # Scratch directory template
+  
+  # Pattern-based test discovery
+  # Tests will be automatically discovered from test*.inp files
+  input_pattern: "test*.inp"         # Pattern for input files in test_dir
+  reference_pattern: "test*.check"   # Pattern for reference files in reference_dir (e.g. tests/check/test002.check)
+  check_pattern: "test*.check"       # Pattern for extracted check data files in build/check
+  
+  # Test execution configuration
+  # Command to run the program (executed from source_dir)
+  # The command will be called with input file as argument
+  test_command: "{BDFHOME}/sbin/bdfdrv.py"  # Executable path (template supports {BDFHOME})
+  test_args_template: "-r {input_file}"     # Template for test arguments (no redirection; handled by runner)
+  
+  # Result extraction from log files
+  # After running a test, extract results using: grep CHECKDATA test*.log > test*.check
+  log_file_pattern: "test*.log"  # Pattern for log files generated in build/check
+  result_extraction:
+    method: "grep"               # Method to extract results
+    pattern: "CHECKDATA"         # Pattern to search for in log files
+    # The extracted build/check/test*.check file will be compared with the reference tests/check/test*.check
 
 reporting:
   output_dir: "./reports"
