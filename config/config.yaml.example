@@ -177,6 +177,9 @@ reporting:
   format: ["html", "json"]
   include_llm_analysis: true
   timestamp_format: "%Y-%m-%d_%H-%M-%S"
+  # Structured error events output for AI Agent integration
+  structured_events_dir: "./reports/error_events"  # Directory for JSON error events
+  save_error_events: true  # Save error events as JSON files
 
 logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR

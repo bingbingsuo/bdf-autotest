@@ -19,6 +19,7 @@ try:
     from .test_runner import TestRunner
     from .report_generator import ReportGenerator
     from .models import BuildResult
+    from .error_event_parser import ErrorEventParser
 except ImportError:  # pragma: no cover
     from config_loader import ConfigLoader  # type: ignore
     from logger import setup_logger  # type: ignore
@@ -30,6 +31,7 @@ except ImportError:  # pragma: no cover
     from test_runner import TestRunner  # type: ignore
     from report_generator import ReportGenerator  # type: ignore
     from models import BuildResult  # type: ignore
+    from error_event_parser import ErrorEventParser  # type: ignore
 
 
 def run_workflow(
@@ -85,6 +87,15 @@ def run_workflow(
 
     llm_analyzer = LLMAnalyzer(config, logger=logger)
     report_generator = ReportGenerator(config)
+    
+    # Initialize error event parser and output directory
+    error_parser = ErrorEventParser(logger=logger)
+    all_error_events = []
+    reporting_cfg = config.get("reporting", {})
+    save_events = reporting_cfg.get("save_error_events", True)
+    events_dir = Path(reporting_cfg.get("structured_events_dir", "./reports/error_events"))
+    if save_events:
+        events_dir.mkdir(parents=True, exist_ok=True)
 
     if not setup_result.success:
         logger.error("Setup failed; analyzing error")
@@ -92,6 +103,14 @@ def run_workflow(
         build_analysis = compilation_analyzer.analyze(setup_result)
         logger.debug("Compilation analysis: %s", build_analysis)
         llm_analysis = llm_analyzer.analyze_build_failure(setup_result)
+        
+        # Parse error event
+        if save_events:
+            error_event = error_parser.parse_build_result(setup_result, config)
+            if error_event:
+                all_error_events.append(error_event)
+                _save_error_event(error_event, events_dir, logger)
+        
         report_generator.generate(
             setup_result,
             test_results=[],
@@ -116,6 +135,14 @@ def run_workflow(
         compile_analysis = compilation_analyzer.analyze(compile_result)
         logger.debug("Compilation analysis: %s", compile_analysis)
         llm_analysis = llm_analyzer.analyze_build_failure(compile_result)
+        
+        # Parse error event
+        if save_events:
+            error_event = error_parser.parse_build_result(compile_result, config)
+            if error_event:
+                all_error_events.append(error_event)
+                _save_error_event(error_event, events_dir, logger)
+        
         report_generator.generate(
             compile_result,
             test_results=[],
@@ -138,6 +165,15 @@ def run_workflow(
     failed_tests = [result for result in test_results if not result.success]
     if failed_tests:
         logger.warning("%s test(s) failed", len(failed_tests))
+        
+        # Parse error events for all failed tests
+        if save_events:
+            for test_result in failed_tests:
+                test_events = error_parser.parse_test_result(test_result, config)
+                for event in test_events:
+                    all_error_events.append(event)
+                    _save_error_event(event, events_dir, logger)
+        
         # In simple mode, analyze all failed tests; in detailed mode, analyze first one (LLM is expensive)
         if llm_analyzer.analysis_mode == "simple" and len(failed_tests) > 1:
             # Combine analysis for all failed tests
@@ -156,6 +192,10 @@ def run_workflow(
     else:
         logger.info("All tests passed")
 
+    # Save summary of all error events
+    if save_events and all_error_events:
+        _save_events_summary(all_error_events, events_dir, logger)
+
     report_generator.generate(
         compile_result,
         test_results,
@@ -165,6 +205,37 @@ def run_workflow(
         version_info=version_info,
     )
     return 0 if not failed_tests else 4
+
+
+def _save_error_event(event, events_dir: Path, logger):
+    """Save a single error event to JSON file"""
+    import json
+    try:
+        filename = f"error_event_{event.event_id}.json"
+        filepath = events_dir / filename
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(event.to_dict(), f, indent=2, ensure_ascii=False)
+        logger.debug("Saved error event %s to %s", event.event_id, filepath)
+    except Exception as e:
+        logger.warning("Failed to save error event %s: %s", event.event_id, e)
+
+
+def _save_events_summary(events, events_dir: Path, logger):
+    """Save summary of all error events"""
+    import json
+    from datetime import datetime
+    try:
+        summary = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "total_events": len(events),
+            "events": [event.to_dict() for event in events],
+        }
+        filepath = events_dir / "events_summary.json"
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False)
+        logger.info("Saved error events summary (%d events) to %s", len(events), filepath)
+    except Exception as e:
+        logger.warning("Failed to save events summary: %s", e)
 
 
 def _fake_successful_build(build_manager: BuildManager) -> BuildResult:
