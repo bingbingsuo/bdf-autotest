@@ -98,6 +98,70 @@ class LLMAnalyzer:
             tail_lines = lines[-80:]
             excerpt = "\n".join(tail_lines)
 
+        # Add important domain knowledge about MCSCF and grad module relationship
+        domain_knowledge = ""
+        if failed_modules and "mcscf" in failed_modules:
+            domain_knowledge = (
+                "\nIMPORTANT DOMAIN KNOWLEDGE:\n"
+                "- The grad module calculates the gradient of MCSCF energy.\n"
+                "- If MCSCF calculation stops or fails, the grad module will still be executed by bdfdrv.py.\n"
+                "- However, when MCSCF fails, the grad results will be incomplete or incorrect since they depend on MCSCF energy.\n"
+                "- Missing CHECKDATA:GRAD lines or incomplete gradient data when MCSCF fails is expected behavior.\n"
+                "- The root cause should focus on why MCSCF failed, not on missing grad data.\n\n"
+            )
+        
+        # Check if TDDFT tolerance issues are present
+        if test_result.comparison and test_result.comparison.differences:
+            diff_text = test_result.comparison.differences.lower()
+            if "tddft" in diff_text and "tolerance" in diff_text:
+                if domain_knowledge:
+                    domain_knowledge += "\n"
+                domain_knowledge += (
+                    "IMPORTANT DOMAIN KNOWLEDGE (TDDFT):\n"
+                    "- TDDFT energy differences may be caused by different default settings in TDDFT from the reference value.\n"
+                    "- This commonly happens during development when default parameters are changed.\n"
+                    "- To investigate: Check out an old version from the git repository to compare default settings and identify what changed.\n"
+                    "- Compare TDDFT input parameters and default values between the reference version and current version.\n\n"
+                )
+        
+        # Check if NMR-related failures are present
+        error_text_lower = error_text.lower()
+        if "nmr" in error_text_lower or (test_result.comparison and "nmr" in test_result.comparison.differences.lower()):
+            # Check if it's a failure (not just tolerance)
+            is_nmr_failure = (
+                "nmr" in failed_modules or
+                "segmentation" in error_text_lower or
+                (test_result.comparison and "line count differs" in test_result.comparison.differences.lower())
+            )
+            if is_nmr_failure:
+                if domain_knowledge:
+                    domain_knowledge += "\n"
+                domain_knowledge += (
+                    "IMPORTANT DOMAIN KNOWLEDGE (NMR):\n"
+                    "- NMR (Nuclear Magnetic Response) calculation failures may indicate bugs in the NMR module.\n"
+                    "- If NMR calculation fails with segmentation fault or produces incomplete output, "
+                    "this is a known issue that needs to be checked and fixed in the NMR module code.\n"
+                    "- The NMR module may have bugs that cause calculation failures.\n\n"
+                )
+        
+        # Check if NRCC-related failures are present
+        if "nrcc" in error_text_lower or (test_result.comparison and "nrcc" in test_result.comparison.differences.lower()):
+            # Check if it's a failure (missing output)
+            is_nrcc_failure = (
+                "nrcc" in failed_modules or
+                (test_result.comparison and "line count differs" in test_result.comparison.differences.lower())
+            )
+            if is_nrcc_failure:
+                if domain_knowledge:
+                    domain_knowledge += "\n"
+                domain_knowledge += (
+                    "IMPORTANT DOMAIN KNOWLEDGE (NRCC):\n"
+                    "- NRCC (Coupled Cluster) calculation failures may indicate program bugs in the NRCC module.\n"
+                    "- If NRCC calculation fails or produces incomplete output (missing CHECKDATA:NRCC lines), "
+                    "this is a known issue that needs to be checked and fixed in the NRCC module code.\n"
+                    "- NRCC module may have bugs that cause calculation failures.\n\n"
+                )
+        
         return (
             "You are an expert in quantum‑chemistry program debugging, especially for the BDF package.\n"
             "A regression test failed when comparing output to reference CHECKDATA.\n"
@@ -106,6 +170,7 @@ class LLMAnalyzer:
             f"Command: {' '.join(test_result.command)}\n"
             f"Exit Code: {test_result.exit_code}\n"
             f"{module_info}"
+            f"{domain_knowledge}"
             "Please structure your answer into:\n"
             "1) Short TL;DR\n"
             "2) Likely root causes (with specific BDF modules / stages)\n"
@@ -137,7 +202,16 @@ class LLMAnalyzer:
         module_descriptions = {
             "mcscf": (
                 "mcscf: Multiconfigurational SCF (CASSCF) module. Sensitive to active‑space "
-                "definition, symmetry, CI dimensions and integral/scratch handling."
+                "definition, symmetry, CI dimensions and integral/scratch handling. "
+                "IMPORTANT: If MCSCF calculation stops or fails, the grad module will still be "
+                "executed by bdfdrv.py, but the gradient results will be incomplete or incorrect "
+                "since they depend on MCSCF energy."
+            ),
+            "grad": (
+                "grad: Gradient calculation module. Calculates the gradient of MCSCF energy. "
+                "IMPORTANT: This module will still execute even if MCSCF fails, but the results "
+                "will be incomplete since it depends on successful MCSCF completion. When MCSCF "
+                "fails, missing CHECKDATA:GRAD lines in the output are expected."
             ),
             "scf": (
                 "scf: Hartree–Fock / DFT SCF driver. Typical issues: SCF convergence, wrong "
@@ -153,7 +227,11 @@ class LLMAnalyzer:
             ),
             "tddft": (
                 "tddft: Time‑dependent DFT excitation calculations. Typical issues: root "
-                "selection, convergence, response solver failures."
+                "selection, convergence, response solver failures. "
+                "IMPORTANT: TDDFT energy differences may be caused by different default settings "
+                "in TDDFT from the reference value. This commonly happens during development. "
+                "To investigate, check out an old version from the git repository to compare "
+                "default settings and identify what changed."
             ),
             "mp2": (
                 "mp2: Second‑order Møller–Plesset correlation. Typical issues: bad orbital "
@@ -162,6 +240,18 @@ class LLMAnalyzer:
             "mrci": (
                 "mrci: Multireference CI on top of MCSCF. Typical issues: CI space too large, "
                 "memory exhaustion, or inconsistent reference space."
+            ),
+            "nmr": (
+                "nmr: Nuclear Magnetic Response (NMR) calculations. Calculates NMR shielding constants "
+                "and chemical shifts. IMPORTANT: NMR module may have bugs that cause calculation failures. "
+                "If NMR calculation fails (segmentation fault or incomplete output), this is a known issue "
+                "that needs to be checked and fixed in the NMR module code."
+            ),
+            "nrcc": (
+                "nrcc: Coupled Cluster (CC) calculations including CCD, CCSD, and EOM-CC methods. "
+                "IMPORTANT: NRCC calculation failures (missing output or incomplete calculations) may indicate "
+                "program bugs in the NRCC module. If NRCC calculation fails or produces incomplete output, "
+                "this is a known issue that needs to be checked and fixed in the NRCC module code."
             ),
         }
 
@@ -382,6 +472,13 @@ class LLMAnalyzer:
             for module in sorted(failed_modules):
                 lines.append(f"- {module}")
             lines.append("")
+            
+            # Add domain knowledge note if MCSCF failed
+            if "mcscf" in failed_modules:
+                lines.append("**Note:** The grad module calculates gradient of MCSCF energy. ")
+                lines.append("If MCSCF fails, grad will still execute but produce incomplete results. ")
+                lines.append("Missing CHECKDATA:GRAD lines when MCSCF fails is expected behavior.")
+                lines.append("")
         
         # Extract key error messages
         lines.append("**Error Messages:**")
@@ -410,6 +507,39 @@ class LLMAnalyzer:
                 lines.append("... (truncated)")
             lines.append("```")
             lines.append("")
+            
+            # Add TDDFT-specific note if applicable
+            diff_text = test_result.comparison.differences.lower()
+            if "tddft" in diff_text and "tolerance" in diff_text:
+                lines.append("**Note:** TDDFT energy differences may be caused by different default ")
+                lines.append("settings in TDDFT from the reference value. This commonly happens during ")
+                lines.append("development. To investigate, check out an old version from the git ")
+                lines.append("repository to compare default settings and identify what changed.")
+                lines.append("")
+            
+            # Add NMR-specific note if applicable
+            if "nmr" in diff_text:
+                error_text_lower = error_text.lower()
+                is_nmr_failure = (
+                    "segmentation" in error_text_lower or
+                    "line count differs" in diff_text
+                )
+                if is_nmr_failure:
+                    lines.append("**Note:** NMR (Nuclear Magnetic Response) calculation failures may ")
+                    lines.append("indicate bugs in the NMR module. If NMR calculation fails with ")
+                    lines.append("segmentation fault or produces incomplete output, this is a known ")
+                    lines.append("issue that needs to be checked and fixed in the NMR module code.")
+                    lines.append("")
+            
+            # Add NRCC-specific note if applicable
+            if "nrcc" in diff_text:
+                is_nrcc_failure = "line count differs" in diff_text
+                if is_nrcc_failure:
+                    lines.append("**Note:** NRCC (Coupled Cluster) calculation failures may indicate ")
+                    lines.append("program bugs in the NRCC module. If NRCC calculation fails or produces ")
+                    lines.append("incomplete output (missing CHECKDATA:NRCC lines), this is a known issue ")
+                    lines.append("that needs to be checked and fixed in the NRCC module code.")
+                    lines.append("")
         
         summary = "\n".join(lines)
         return LLMAnalysis(summary=summary, suggestions=[], raw_response=None)

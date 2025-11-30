@@ -60,6 +60,47 @@ Actual:    -0.125000
 Difference: 0.001544
 Analysis: Significant difference suggests algorithm change or bug in MP2 implementation.
 Fix: Review MP2 code changes, check integral evaluation, verify basis set handling.
+
+Example 3: Missing GRAD Data After MCSCF Failure
+Error: Missing CHECKDATA:GRAD lines in output
+Reference: Contains CHECKDATA:GRAD:TOT_GRAD entries
+Actual:    Missing all GRAD entries, only has early CHECKDATA (HF energy, etc.)
+Context: MCSCF module failed with segmentation fault
+Analysis: The grad module calculates gradient of MCSCF energy. When MCSCF fails, grad still executes 
+but produces incomplete results. Missing GRAD data is expected when MCSCF fails - focus on fixing MCSCF.
+Fix: Investigate MCSCF failure (memory issues, convergence, active space). GRAD data will be correct 
+once MCSCF completes successfully.
+
+Example 4: TDDFT Excitation Energy Differences
+Error: CHECKDATA:TDDFT:EXCITENE differs beyond tolerance
+Reference: Multiple TDDFT excitation energies
+Actual:    Different TDDFT excitation energy values
+Context: TDDFT calculation completed but energies differ
+Analysis: TDDFT energy differences may be caused by different default settings in TDDFT from the 
+reference value. This commonly happens during development when default parameters are changed.
+Fix: Check out an old version from the git repository to compare default settings and identify what 
+changed. Compare TDDFT input parameters and default values between reference and current versions.
+
+Example 5: NMR Calculation Failure
+Error: Missing CHECKDATA:NMR lines in output
+Reference: Contains CHECKDATA:NMR:NR_CG_NMSC and CHECKDATA:NMR:NR_GIAO_NMSC entries
+Actual:    Missing NMR data, only has early CHECKDATA (HF energy, etc.)
+Context: NMR module calculation failed with segmentation fault or incomplete output
+Analysis: NMR (Nuclear Magnetic Response) calculation failures may indicate bugs in the NMR module. 
+The NMR module may have bugs that cause calculation failures.
+Fix: Check the NMR module code for bugs. This is a known issue that needs to be checked and fixed 
+in the NMR module code. Investigate segmentation faults or incomplete calculations in the NMR module.
+
+Example 6: NRCC Calculation Failure
+Error: Missing CHECKDATA:NRCC lines in output
+Reference: Contains CHECKDATA:NRCC:CCD, CHECKDATA:NRCC:CCSD, CHECKDATA:NRCC:EOMIPCCSD entries
+Actual:    Missing NRCC data, only has early CHECKDATA (HF energy, etc.)
+Context: NRCC (Coupled Cluster) calculation failed or incomplete
+Analysis: NRCC calculation failures may indicate program bugs in the NRCC module. If NRCC calculation 
+fails or produces incomplete output, this is a known issue that needs to be checked and fixed in the 
+NRCC module code.
+Fix: Check the NRCC module code for bugs. Investigate why the coupled cluster calculation is failing 
+or producing incomplete results.
 """,
         
         ErrorType.RUNTIME: """
@@ -68,12 +109,14 @@ Error: Segmentation fault (core dumped)
 Location: During MCSCF calculation
 Analysis: Memory access violation, likely array bounds issue or null pointer.
 Fix: Check array allocations, verify pointer initialization, use debugger (gdb) to find exact location.
+Note: If MCSCF fails with segmentation fault, the grad module will still execute but produce incomplete results.
 
 Example 2: Module Failure
 Error: Module 'mcscf' failed to converge
 Context: CASSCF calculation with active space (6,6)
 Analysis: SCF convergence failure in MCSCF module. Could be due to active space definition or initial guess.
 Fix: Check active space orbitals, try different initial guess, verify symmetry settings.
+Note: When MCSCF fails, grad module execution will still occur but results depend on successful MCSCF completion.
 """,
         
         ErrorType.TEST_EXECUTION: """
@@ -161,6 +204,19 @@ Fix: Review test log file, identify failing module, check input parameters.
             "2. Likely root causes (with specific BDF modules/stages)",
             "3. Concrete debugging steps (commands, input edits, code areas to inspect)",
             "4. Notes about numerical tolerances vs real bugs",
+            "",
+            "IMPORTANT DOMAIN KNOWLEDGE:",
+            "- The grad module calculates the gradient of MCSCF energy.",
+            "- If MCSCF calculation stops or fails, the grad module will still be executed by bdfdrv.py.",
+            "- However, when MCSCF fails, grad results will be incomplete since they depend on MCSCF energy.",
+            "- Missing CHECKDATA:GRAD lines when MCSCF fails is expected - focus on fixing MCSCF, not grad.",
+            "- TDDFT energy differences may be caused by different default settings in TDDFT from the reference value.",
+            "- This commonly happens during development when default parameters are changed.",
+            "- To investigate TDDFT differences: Check out an old version from git repository to compare default settings.",
+            "- NMR (Nuclear Magnetic Response) calculation failures may indicate bugs in the NMR module.",
+            "- If NMR calculation fails, this is a known issue that needs to be checked and fixed in the NMR module code.",
+            "- NRCC (Coupled Cluster) calculation failures may indicate program bugs in the NRCC module.",
+            "- If NRCC calculation fails or produces incomplete output, this is a known issue that needs to be fixed in the NRCC module code.",
             "",
         ]
         

@@ -251,6 +251,42 @@ class TestRunner:
             self.logger.info("Test %s passed", case.name)
         else:
             self.logger.error("Test %s failed", case.name)
+            # Log exit code
+            if test_result.exit_code != 0:
+                self.logger.error("  Exit code: %s", test_result.exit_code)
+            
+            # Log key error messages from stderr
+            if test_result.stderr:
+                stderr_lines = test_result.stderr.strip().splitlines()
+                # Look for critical error indicators
+                error_keywords = ["SIGSEGV", "Segmentation fault", "Program received signal", 
+                                "failed", "error", "Error", "ERROR", "FATAL"]
+                relevant_lines = []
+                for line in stderr_lines:
+                    if any(keyword in line for keyword in error_keywords):
+                        relevant_lines.append(line)
+                        if len(relevant_lines) >= 10:  # Limit to first 10 relevant lines
+                            break
+                if relevant_lines:
+                    self.logger.error("  Error details from stderr:")
+                    for line in relevant_lines:
+                        self.logger.error("    %s", line)
+                elif len(stderr_lines) > 0:
+                    # If no keywords found, show first few lines
+                    self.logger.error("  Stderr (first 5 lines):")
+                    for line in stderr_lines[:5]:
+                        self.logger.error("    %s", line)
+            
+            # Log comparison differences if comparison failed
+            if test_result.comparison and not test_result.comparison.matched:
+                self.logger.error("  Comparison failed:")
+                if test_result.comparison.differences:
+                    diff_lines = test_result.comparison.differences.splitlines()
+                    # Log first 20 lines of differences to avoid overwhelming the log
+                    for line in diff_lines[:20]:
+                        self.logger.error("    %s", line)
+                    if len(diff_lines) > 20:
+                        self.logger.error("    ... (%d more lines)", len(diff_lines) - 20)
         return test_result
 
     def _extract_check_file(self, case: TestCase) -> Path:

@@ -18,10 +18,13 @@
   - Simple mode: Fast extraction of failed tests, error messages, and module detection
   - Detailed mode: Comprehensive LLM-powered analysis
   - Auto-fallback: Local LLM with remote fallback
+  - Domain knowledge integration: MCSCF/grad module relationship understanding
 - ✅ **Module Detection**: Accurate identification of failed BDF modules using "Start/End running module" patterns
 - ✅ **Multiple Test Failure Handling**: Analyzes all failed tests in simple mode
 - ✅ **Tolerance Profiles**: Strict/loose tolerance modes with configurable scaling
 - ✅ **Environment Management**: Proper BDFHOME, BDF_TMPDIR, and OpenMP settings
+- ✅ **Enhanced Error Logging**: Detailed error information including exit codes, stderr excerpts, and comparison differences
+- ✅ **Domain-Specific Knowledge**: Understanding of BDF module dependencies (e.g., grad depends on MCSCF)
 
 ## 📊 Test Results
 
@@ -76,8 +79,10 @@ python3 -m src.orchestrator --config config/config.yaml --skip-git --skip-build
 ### Short-term
 1. ✅ **Configuration Validation**: Schema validation for config.yaml (Completed)
 2. ✅ **Report Comparison**: Compare reports across runs to track trends (Completed)
-3. **Email Notifications**: Send reports on test failures
-4. **Parallel Test Execution**: Run tests in parallel for faster execution
+3. ✅ **Enhanced Error Logging**: Detailed error diagnostics with exit codes and stderr (Completed)
+4. ✅ **Domain Knowledge Integration**: MCSCF/grad module relationship in error analysis (Completed)
+5. **Email Notifications**: Send reports on test failures
+6. ✅ **Parallel Test Execution**: Run tests in parallel for faster execution (Implemented)
 
 ### Medium-term
 1. **CI/CD Integration**: GitHub Actions, GitLab CI examples
@@ -106,6 +111,8 @@ python3 -m src.orchestrator --config config/config.yaml --skip-git --skip-build
 3. **Comprehensive Reporting**: Both HTML and JSON formats with detailed information
 4. **Flexible Configuration**: Highly configurable for different environments
 5. **Robust Error Handling**: Graceful handling of failures at each stage
+6. **Enhanced Error Diagnostics**: Detailed error logging with exit codes, stderr excerpts, and comparison differences
+7. **Domain Knowledge Integration**: LLM analysis includes BDF-specific knowledge (MCSCF/grad relationship, module dependencies)
 
 ## 🎉 Project Status: Production Ready
 
