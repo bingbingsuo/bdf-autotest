@@ -36,7 +36,7 @@ class LLMAnalyzer:
         self.local_model = self.local_cfg.get("model", "gpt-oss:120b")
         self.local_timeout = int(self.local_cfg.get("timeout", 60))  # Timeout in seconds
 
-        # Derived remote settings (currently OpenAI)
+        # Derived remote settings (OpenAI, OpenRouter, DeepSeek, Groq, etc.)
         self.remote_enabled = bool(self.remote_cfg.get("enabled", True))
         self.remote_provider = self.remote_cfg.get("provider", "openai")
         self.remote_model = self.remote_cfg.get("model", "gpt-4o")
@@ -323,11 +323,27 @@ class LLMAnalyzer:
 
     def _call_remote_llm(self, prompt: str) -> str:
         """
-        Call remote LLM (currently OpenAI chat completion API).
+        Call remote LLM via the configured provider.
         """
-        if self.remote_provider != "openai":
+        provider = (self.remote_provider or "openai").lower()
+        if provider == "openai":
+            return self._call_openai_chat(prompt)
+        elif provider == "openrouter":
+            return self._call_openrouter_chat(prompt)
+        elif provider == "deepseek":
+            return self._call_deepseek_chat(prompt)
+        elif provider == "groq":
+            return self._call_groq_chat(prompt)
+        else:
             raise RuntimeError(f"Remote provider {self.remote_provider!r} is not supported yet.")
 
+    def _call_openai_compatible_chat(self, *, url: str, prompt: str, headers_extra: Optional[Dict[str, str]] = None, log_provider: str = "OpenAI") -> str:
+        """
+        Helper for OpenAI‑compatible chat completion APIs.
+
+        Many providers (OpenAI, DeepSeek, Groq, some proxies) use the same schema:
+        POST <url> with {model, messages, max_tokens, temperature}.
+        """
         api_key = os.getenv(self.remote_api_key_env)
         if not api_key:
             raise RuntimeError(
@@ -335,11 +351,13 @@ class LLMAnalyzer:
                 "Set it before running the orchestrator."
             )
 
-        url = "https://api.openai.com/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        if headers_extra:
+            headers.update(headers_extra)
+
         payload = {
             "model": self.remote_model,
             "messages": [
@@ -350,7 +368,7 @@ class LLMAnalyzer:
             "temperature": self.temperature,
         }
 
-        self.logger.debug("Calling remote LLM via OpenAI model=%s", self.remote_model)
+        self.logger.debug("Calling remote LLM via %s model=%s", log_provider, self.remote_model)
         response = requests.post(url, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
         data = response.json()
@@ -360,6 +378,44 @@ class LLMAnalyzer:
             return ""
         message = choices[0].get("message") or {}
         return message.get("content", "") or ""
+
+    def _call_openai_chat(self, prompt: str) -> str:
+        """Call OpenAI-compatible chat completion API (api.openai.com)."""
+        url = "https://api.openai.com/v1/chat/completions"
+        return self._call_openai_compatible_chat(url=url, prompt=prompt, log_provider="OpenAI")
+
+    def _call_openrouter_chat(self, prompt: str) -> str:
+        """Call OpenRouter chat completion API (https://openrouter.ai)."""
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers_extra = {
+            # Optional but recommended for OpenRouter; users can override via env/proxy if needed.
+            "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", "https://bdf-autotest.local"),  # noqa: E501
+            "X-Title": os.getenv("OPENROUTER_X_TITLE", "BDF AutoTest"),  # noqa: E501
+        }
+        return self._call_openai_compatible_chat(
+            url=url,
+            prompt=prompt,
+            headers_extra=headers_extra,
+            log_provider="OpenRouter",
+        )
+
+    def _call_deepseek_chat(self, prompt: str) -> str:
+        """Call DeepSeek chat completion API (https://api.deepseek.com)."""
+        url = "https://api.deepseek.com/chat/completions"
+        return self._call_openai_compatible_chat(
+            url=url,
+            prompt=prompt,
+            log_provider="DeepSeek",
+        )
+
+    def _call_groq_chat(self, prompt: str) -> str:
+        """Call Groq chat completion API (OpenAI-compatible endpoint)."""
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        return self._call_openai_compatible_chat(
+            url=url,
+            prompt=prompt,
+            log_provider="Groq",
+        )
 
     def _simple_build_analysis(self, build_result: BuildResult) -> LLMAnalysis:
         """Extract basic information from build failure without LLM"""

@@ -8,9 +8,9 @@ git:
   local_path: "./package_source"
 
 build:
-  # Root directory where git pulls the code
-  source_dir: "./package_source"
-  # Build directory inside source_dir (relative path)
+  # Only two path-related options are needed:
+  # - git.local_path : root directory where git pulls the code
+  # - build_dir      : build directory inside that source_dir (relative path)
   build_dir: "build"
   # Command to initialize/configure the build (run from source_dir)
   build_command: "./setup"
@@ -62,7 +62,7 @@ build:
   additional_args: []
 
 compile:
-  working_dir: "./package_source/build"  # Run make inside build directory
+  # working_dir is derived automatically as: build.source_dir/build.build_dir
   command: "make"  # Base compile command
   jobs: "auto"     # Number of parallel jobs for -jN (set to a positive integer, or use null / "auto" to detect from CPU count)
   target: "install"  # Target to build after setup
@@ -91,9 +91,17 @@ llm:
 
   remote:
     enabled: true
-    provider: "openai"          # Remote provider, currently 'openai' is supported
-    model: "gpt-4o"             # OpenAI chat model to use
-    api_key_env: "OPENAI_API_KEY"  # Environment variable holding your OpenAI API key
+    # Supported providers (all use OpenAI‑compatible chat completion APIs):
+    # - "openai"     → https://api.openai.com/v1/chat/completions
+    # - "openrouter" → https://openrouter.ai/api/v1/chat/completions
+    # - "deepseek"   → https://api.deepseek.com/chat/completions
+    # - "groq"       → https://api.groq.com/openai/v1/chat/completions
+    provider: "openai"
+    model: "gpt-4o"                 # Remote model name (provider-specific)
+    # Environment variable holding your API key.
+    # For OpenAI, a common choice is OPENAI_API_KEY.
+    # For OpenRouter, you can set api_key_env: "OPENROUTER_API_KEY" (or any other name you prefer).
+    api_key_env: "OPENAI_API_KEY"
 
 tests:
   # Test directories are relative to source_dir (inside the repository)

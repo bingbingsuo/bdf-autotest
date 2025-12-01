@@ -38,7 +38,11 @@ class ConfigLoader:
         
         with open(self.config_path, 'r') as f:
             self.config = yaml.safe_load(f)
-        
+
+        # Normalize path-related settings so users mainly configure git.local_path and build.build_dir.
+        # - build.source_dir is forced to git.local_path when present.
+        # - compile.working_dir is forced to build.source_dir/build.build_dir.
+        self._normalize_paths()
         self._validate()
         return self.config
     
@@ -65,6 +69,48 @@ class ConfigLoader:
             formatted = "\n - ".join(errors)
             raise ValueError(f"Configuration validation failed:\n - {formatted}")
 
+    def _normalize_paths(self) -> None:
+        """
+        Normalize and derive path-related settings.
+
+        Rules:
+        - If git.local_path is set, force build.source_dir to the same value.
+        - Derive compile.working_dir as build.source_dir/build.build_dir, overriding any user value.
+        """
+        if not isinstance(self.config, dict):
+            return
+
+        git_cfg = self.config.get("git") or {}
+        build_cfg = self.config.get("build") or {}
+        compile_cfg = self.config.get("compile") or {}
+
+        # 1) build.source_dir <- git.local_path (when provided)
+        local_path = git_cfg.get("local_path")
+        if isinstance(local_path, str) and local_path.strip():
+            build_cfg["source_dir"] = local_path
+        else:
+            # Fallback to an existing value or the historical default
+            existing = build_cfg.get("source_dir")
+            if not isinstance(existing, str) or not existing.strip():
+                build_cfg["source_dir"] = "./package_source"
+
+        source_dir = build_cfg.get("source_dir", "./package_source")
+
+        # 2) compile.working_dir <- source_dir/build_dir
+        build_dir = build_cfg.get("build_dir", "build")
+        try:
+            working_dir = str(Path(source_dir) / build_dir)
+        except TypeError:
+            # In case of non-string values, fall back to defaults
+            working_dir = str(Path("./package_source") / "build")
+
+        # Always override to avoid confusing users with multiple path knobs
+        compile_cfg["working_dir"] = working_dir
+
+        # Write back normalized sections
+        self.config["build"] = build_cfg
+        self.config["compile"] = compile_cfg
+        
     # --- Section validators -------------------------------------------------
 
     def _validate_git(self) -> List[str]:
@@ -82,7 +128,9 @@ class ConfigLoader:
         if not isinstance(build_cfg, dict):
             return ["Section 'build' must be a mapping."]
 
-        self._require_strings(build_cfg, ["source_dir", "build_dir", "build_command", "compiler_set"], errors, section="build")
+        # Users only need to provide build_dir, build_command and compiler_set.
+        # build.source_dir is derived from git.local_path in _normalize_paths.
+        self._require_strings(build_cfg, ["build_dir", "build_command", "compiler_set"], errors, section="build")
 
         compiler_set = build_cfg.get("compiler_set")
         compilers = build_cfg.get("compilers")
@@ -124,7 +172,8 @@ class ConfigLoader:
         if not isinstance(compile_cfg, dict):
             return ["Section 'compile' must be a mapping."]
 
-        self._require_strings(compile_cfg, ["working_dir", "command", "log_file"], errors, section="compile")
+        # compile.working_dir is derived from build.source_dir and build.build_dir in _normalize_paths.
+        self._require_strings(compile_cfg, ["command", "log_file"], errors, section="compile")
 
         # jobs can be omitted or set to null/"auto" to enable automatic detection from CPU count.
         raw_jobs = compile_cfg.get("jobs", None)
