@@ -25,7 +25,10 @@ class TestRunner:
         self.config = config
         self.build_cfg = config.get("build", {})
         self.tests_cfg = config.get("tests", {})
-        self.source_dir = Path(self.build_cfg.get("source_dir", "./package_source")).resolve()
+        # Use git.local_path as default if source_dir is not explicitly set
+        git_cfg = config.get("git", {})
+        default_source_dir = git_cfg.get("local_path", "./package_source")
+        self.source_dir = Path(self.build_cfg.get("source_dir", default_source_dir)).resolve()
         # build/check directory inside the build tree for all test artefacts
         self.build_dir = self.source_dir / self.build_cfg.get("build_dir", "build")
         # Installed package root for BDFHOME

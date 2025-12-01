@@ -127,12 +127,17 @@ class ErrorEventParser:
         
         # Build context
         tests_cfg = config.get("tests", {})
+        # Use git.local_path as default if source_dir is not explicitly set
+        build_cfg = config.get("build", {})
+        git_cfg = config.get("git", {})
+        default_source_dir = git_cfg.get("local_path", "./package_source")
+        source_dir = build_cfg.get("source_dir", default_source_dir)
         context = ErrorContext(
             command=result.command,
             working_directory=result.cwd,
             test_name=result.test_case.name if result.test_case else None,
             environment={
-                "BDFHOME": str(config.get("build", {}).get("source_dir", "")),
+                "BDFHOME": str(source_dir),
             }
         )
         
