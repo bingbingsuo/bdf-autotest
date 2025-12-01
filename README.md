@@ -218,6 +218,7 @@ Key configuration sections:
 
 ### 3. Usage
 
+#### Full Workflow
 ```bash
 # Run full workflow: git pull → setup → compile → test → report
 python3 -m src.orchestrator --config config/config.yaml
@@ -231,9 +232,37 @@ python3 -m src.orchestrator --config config/config.yaml --skip-git --skip-build
 # Skip tests (only build)
 python3 -m src.orchestrator --config config/config.yaml --skip-tests
 
-# Compare test reports
-python3 -m src.orchestrator compare -n 2  # Compare latest 2 reports
+# Use a specific test profile
+python3 -m src.orchestrator --config config/config.yaml --profile smoke
+```
+
+#### Run User Input File
+```bash
+# Run a user-specified input file (must have .inp extension)
+python3 -m src.orchestrator run-input /path/to/test.inp --config config/config.yaml
+
+# Example
+python3 -m src.orchestrator run-input /Users/bsuo/check/bdf/h2o.inp --config config/config.yaml
+```
+
+**Features:**
+- Input file must have `.inp` extension (enforced)
+- Standard output saved to `{filename}.log`
+- Standard error saved to `{filename}.err`
+- Automatically detects BDFOPT detailed output (`{filename}.out.tmp`)
+- Uses input file's directory as working directory
+- Configurable `BDF_WORKDIR` and `BDF_TMPDIR` in config
+
+#### Compare Test Reports
+```bash
+# Compare latest 2 reports
+python3 -m src.orchestrator compare -n 2
+
+# Compare specific reports
 python3 -m src.orchestrator compare --before report1.json --after report2.json
+
+# Compare with custom reports directory
+python3 -m src.orchestrator compare --reports-dir ./reports -n 3
 ```
 
 ### 4. View Results
@@ -293,40 +322,136 @@ If you run into problems (git/SSH issues, setup or build failures, LLM connectiv
 
 ## Features
 
-### Build System
-- Supports multiple compiler sets (GNU, Intel, LLVM)
-- Configurable math libraries (MKL or custom BLAS/LAPACK)
-- Release and debug build modes
-- Automatic clean build (removes old build directory)
+### 1. Complete Workflow Automation
+- **Git Integration**: Automatic repository synchronization (`git pull`)
+- **Build System**: Automated setup and compilation
+  - Supports multiple compiler sets (GNU, Intel, LLVM)
+  - Configurable math libraries (MKL or custom BLAS/LAPACK)
+  - Release and debug build modes
+  - Automatic clean build (removes old build directory)
+- **Test Execution**: Automated test discovery and execution
+- **Report Generation**: Comprehensive HTML and JSON reports
+- **Flexible Execution**: Skip any step with command-line flags (`--skip-git`, `--skip-build`, `--skip-tests`)
 
-### LLM Integration
+### 2. User Input File Execution (`run-input`)
+- **Direct Calculation**: Run BDF calculations with user-specified input files
+- **File Format Validation**: Enforces `.inp` extension for input files (required)
+- **Output Management**:
+  - Standard output redirected to `{filename}.log` (extractor-processed results)
+  - Standard error redirected to `{filename}.err`
+  - Automatic detection of BDFOPT detailed output (`{filename}.out.tmp`) when BDFOPT module is used
+- **Working Directory**: 
+  - Default: Uses input file's directory as working directory
+  - Configurable: Set `BDF_WORKDIR` in `config.yaml` under `tests.env`
+- **Temporary Directory**: 
+  - Default: System temporary directory
+  - Configurable: Set `BDF_TMPDIR` in `config.yaml` (supports `$RANDOM` placeholder)
+- **Error Handling**: 
+  - Validates input file existence before execution
+  - Provides clear error messages with tried paths if file not found
+  - Does not execute calculation if input file is invalid
+- **Output Analysis**: Lists all generated files for easy result inspection
+
+### 3. LLM-Powered Error Analysis
 - **Local LLM**: Supports Ollama and compatible endpoints
 - **Remote LLM**: OpenAI API integration
-- **Auto mode**: Tries local first, falls back to remote
-- Configurable timeout for local LLM requests
-- Detailed failure analysis for build and test failures
+- **Auto Mode**: Tries local first, falls back to remote
+- **Domain Knowledge Integration**: 
+  - MCSCF/GRAD module dependencies
+  - TDDFT default settings awareness
+  - NMR and NRCC module bug awareness
+- **Detailed Analysis**: 
+  - Build failure analysis with compilation error context
+  - Test failure analysis with numerical differences and runtime errors
+  - Context-aware suggestions based on module-specific knowledge
+- **Configurable Timeout**: For local LLM requests
 
-### Test Execution
-- Pattern-based test discovery (`test*.inp`)
-- Automatic CHECKDATA extraction from logs
-- Numerical tolerance comparison with per-key tolerances
-- Environment variable management (BDFHOME, BDF_TMPDIR, OMP settings)
-- Test range filtering (run specific test subsets)
-- Named test profiles (e.g. smoke/core/full) via `tests.profiles` and `tests.profile`
-- Optional parallel execution via `tests.max_parallel`
+### 4. Test Execution and Comparison
+- **Pattern-Based Discovery**: Automatic test discovery (`test*.inp`)
+- **CHECKDATA Extraction**: Automatic extraction of numerical results from logs
+- **Numerical Comparison**: 
+  - Per-key absolute tolerances for different CHECKDATA types
+  - Multi-value comparison for complex data (e.g., GRAD:GS+EX, BDFOPT:OPTGEOM)
+  - Relative tolerance for ELECOUP data
+  - Strict/loose tolerance modes
+- **Environment Management**: 
+  - BDFHOME, BDF_TMPDIR, OMP settings
+  - Configurable OpenMP thread count and stack size
+- **Test Filtering**:
+  - Test range filtering (run specific test subsets via `enabled_range`)
+  - Named test profiles (e.g. smoke/core/full) via `tests.profiles` and `tests.profile`
+- **Parallel Execution**: Optional parallel test execution via `tests.max_parallel`
+- **Detailed Reporting**: Whitespace-ignoring comparison with detailed difference reporting
 
-### Result Comparison
-- Whitespace-ignoring comparison
-- Per-key absolute tolerances for different CHECKDATA types
-- Relative tolerance for ELECOUP data
-- Strict/loose tolerance modes
-- Detailed difference reporting
+### 5. Report Generation and Comparison
+- **HTML Reports**: Styled HTML reports with comprehensive information
+- **JSON Reports**: Machine-readable format for programmatic access
+- **Report Contents**:
+  - Git information (commit hash, branch, remote URL)
+  - Build configuration (compiler settings, math library)
+  - Version information
+  - Test results with pass/fail status
+  - LLM analysis for failures
+  - Summary statistics
+- **Report Comparison**: 
+  - Compare latest N reports or specific reports
+  - Track trends across runs
+  - Identify regressions (new failures)
+  - Identify improvements (fixed tests)
+  - Show still failing and still passing tests
+  - Detect new and removed tests
 
-### Reporting
-- HTML reports with styling
-- JSON reports for programmatic access
-- Includes Git information, build configuration, version info
-- LLM analysis for failures
-- Summary statistics and detailed failure information
-- **Report Comparison**: Track trends across runs, identify regressions and improvements
+### 6. Configuration Management
+- **YAML Configuration**: Flexible YAML-based configuration system
+- **Configuration Validation**: Automatic validation of configuration structure
+- **Example Template**: `config.yaml.example` with comprehensive documentation
+- **Section Support**:
+  - Git settings (remote URL, branch, local path)
+  - Build settings (compiler sets, math libraries, build modes)
+  - LLM settings (local/remote endpoints, API keys, timeouts)
+  - Test settings (test directory, reference data, tolerances, profiles)
+  - Reporting settings (output directory, formats, error event saving)
+  - Logging settings (log level, log directory)
+
+### 6. User Input File Execution
+The `run-input` command allows you to run BDF calculations directly with any input file:
+
+**Key Features:**
+- **File Format Validation**: Only accepts `.inp` files (enforced)
+- **Output Files**:
+  - `{filename}.log`: Standard output (extractor-processed results)
+  - `{filename}.err`: Standard error output
+  - `{filename}.out.tmp`: BDFOPT detailed output (automatically detected when BDFOPT module is used)
+- **Working Directory**: 
+  - Default: Input file's directory
+  - Configurable: Set `BDF_WORKDIR` in `config.yaml` under `tests.env`
+- **Temporary Directory**:
+  - Default: System temporary directory
+  - Configurable: Set `BDF_TMPDIR` in `config.yaml` (supports `$RANDOM` placeholder)
+- **Error Handling**: 
+  - Validates file existence before execution
+  - Provides clear error messages if file not found
+  - Lists all generated output files after execution
+
+**Example Output:**
+```
+Output files:
+  - Stdout: /path/to/test.log
+  - Stderr: /path/to/test.err
+  - BDFOPT detailed output: /path/to/test.out.tmp
+    ⚠️  IMPORTANT: This file contains detailed BDF module outputs
+       and is essential for error analysis when calculation fails.
+```
+
+### 7. Error Event Tracking
+- **Structured Error Events**: JSON-based error event storage
+- **Error Parsing**: Automatic parsing of build and test errors
+- **Event Storage**: Optional saving of error events for analysis
+- **Event Summary**: Summary of all error events in a run
+
+### 8. Logging and Debugging
+- **Structured Logging**: Comprehensive logging with configurable levels
+- **Log Files**: Timestamped log files in `logs/` directory
+- **Console Output**: Real-time console output for immediate feedback
+- **Error Details**: Detailed error information in logs and reports
 

@@ -1,0 +1,25 @@
+Traceback (most recent call last):
+  File "/Users/bsuo/bdf/BDFAutoTest/src/orchestrator.py", line 20, in <module>
+    from .report_generator import ReportGenerator
+  File "/Users/bsuo/bdf/BDFAutoTest/src/report_generator.py", line 10, in <module>
+    from jinja2 import Environment, BaseLoader
+  File "/Users/bsuo/opt/anaconda3/lib/python3.7/site-packages/jinja2/__init__.py", line 33, in <module>
+    from jinja2.environment import Environment, Template
+  File "/Users/bsuo/opt/anaconda3/lib/python3.7/site-packages/jinja2/environment.py", line 15, in <module>
+    from jinja2 import nodes
+  File "/Users/bsuo/opt/anaconda3/lib/python3.7/site-packages/jinja2/nodes.py", line 19, in <module>
+    from jinja2.utils import Markup
+  File "/Users/bsuo/opt/anaconda3/lib/python3.7/site-packages/jinja2/utils.py", line 642, in <module>
+    from markupsafe import Markup, escape, soft_unicode
+ImportError: cannot import name 'soft_unicode' from 'markupsafe' (/Users/bsuo/opt/anaconda3/lib/python3.7/site-packages/markupsafe/__init__.py)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/bsuo/opt/anaconda3/lib/python3.7/runpy.py", line 193, in _run_module_as_main
+    "__main__", mod_spec)
+  File "/Users/bsuo/opt/anaconda3/lib/python3.7/runpy.py", line 85, in _run_code
+    exec(code, run_globals)
+  File "/Users/bsuo/bdf/BDFAutoTest/src/orchestrator.py", line 23, in <module>
+    from config_loader import ConfigLoader  # type: ignore
+ModuleNotFoundError: No module named 'config_loader'

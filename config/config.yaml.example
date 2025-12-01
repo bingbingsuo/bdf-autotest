@@ -28,22 +28,22 @@ build:
       c: "icx"
       cpp: "icpx"
     llvm:
-      fortran: "flang"
+      fortran: "Flang"
       c: "clang"
       cpp: "clang++"
   
   # Math library configuration
   # Option 1: Use MKL library
-  use_mkl: false          # Set to true if you want to use Intel MKL
-  mkl_option: "TBB"       # Value for --mkl option (ignored if use_mkl: false)
+  use_mkl: false  # Set to false for custom math library
+  mkl_option: "TBB"  # Value for --mkl option (ignored if use_mkl: false)
   
   # Option 2: Custom math library (configure below)
   math_library:
     # Example placeholders; replace with your LAPACK/BLAS installation paths
-    mathinclude_flags: "-I/path/to/lapack/include -I/path/to/cblas/include"
-    mathlib_flags: "-L/path/to/lapack/lib -llapack -lblas -lcblas -llapacke"
-    blasdir: "/path/to/blas"
-    lapackdir: "/path/to/lapack"
+    mathinclude_flags: "-I/path/to/lapack/include -I/path/to/cblas/include"  # Value for --mathinclude-flags (fill in as needed)
+    mathlib_flags: "-L/path/to/lapack/lib -llapack -lblas -lcblas -llapacke"       # Value for --mathlib-flags (fill in as needed)
+    blasdir: "/path/to/blas"             # Value for --blasdir (fill in as needed)
+    lapackdir: "/path/to/lapack"           # Value for --lapackdir (fill in as needed)
   
   # Build mode
   # Options: "release", "debug"
@@ -62,19 +62,12 @@ build:
   additional_args: []
 
 compile:
-  # Run make inside build directory
-  working_dir: "./package_source/build"
-  # Base compile command
-  command: "make"
-  # Number of parallel jobs for -jN (set to a positive integer, or use null / "auto" to detect from CPU count)
-  jobs: "auto"
-  # Target to build after setup
-  target: "install"
-  # Additional make arguments if needed
-  extra_args: []
-  # Capture stdout/stderr for analysis
-  log_file: "make.log"
-  # Additional environment variables if needed
+  working_dir: "./package_source/build"  # Run make inside build directory
+  command: "make"  # Base compile command
+  jobs: "auto"     # Number of parallel jobs for -jN (set to a positive integer, or use null / "auto" to detect from CPU count)
+  target: "install"  # Target to build after setup
+  extra_args: []      # Additional make arguments if needed
+  log_file: "make.log"  # Capture stdout/stderr for analysis
   environment: {}
 
 llm:
@@ -84,19 +77,17 @@ llm:
   # - auto  : try local first, fall back to remote if local fails
   mode: "auto"
   # Analysis mode:
-  # - simple: Extract basic info (failed tests, error messages, modules) without LLM call
+  # - simple: Extract basic info (failed tests, error messages, modules) without LLM call (default)
   # - detailed: Use LLM for comprehensive analysis (requires LLM access)
-  analysis_mode: "simple"
+  analysis_mode: "simple"  # Options: "simple", "detailed"
   max_tokens: 2000
   temperature: 0.3  # Lower temperature for more deterministic analysis
 
   local:
     enabled: true
-    # Example local endpoint (e.g. Ollama)
-    endpoint: "http://localhost:11434"
-    model: "my-local-llm"
-    # Timeout in seconds for local LLM requests
-    timeout: 300
+    endpoint: "http://localhost:11434"  # Local LLM endpoint (e.g. Ollama)
+    model: "my-local-llm"                  # model name
+    timeout: 300  # Timeout in seconds for local LLM requests (default: 60) 
 
   remote:
     enabled: true
@@ -106,16 +97,14 @@ llm:
 
 tests:
   # Test directories are relative to source_dir (inside the repository)
-  test_dir: "tests/input"          # Test input directory inside source_dir
-  reference_dir: "tests/check"     # Reference data directory inside source_dir
-  tolerance: 1e-6                  # Base numerical comparison tolerance (not used for CHECKDATA rules)
-  timeout: 3600                    # Test timeout in seconds
-
+  test_dir: "tests/input"  # Test input directory inside source_dir
+  reference_dir: "tests/check"  # Reference data directory inside source_dir
+  tolerance: 1e-6  # Base numerical comparison tolerance (not used for CHECKDATA rules)
+  timeout: 3600     # Test timeout in seconds
   # Limit which tests are executed by numeric ID (testNNN)
   enabled_range:
-    min: 1
-    max: 161
-
+    min: 1   # Run from test001 ...
+    max: 161   # ... to test161
   # Tolerance profiles:
   # - strict: use base CHECKDATA tolerances
   # - loose: multiply all CHECKDATA tolerances by the given scale factor
@@ -123,7 +112,6 @@ tests:
   tolerance_scale:
     strict: 1.0
     loose: 5.0
-
   # Optional named test profiles (for convenience)
   profiles:
     smoke:
@@ -136,40 +124,40 @@ tests:
       min: 1
       max: 161
 
-  # Active test profile (overrides enabled_range)
-  profile: core
-
+  # Active test profile (overrides enabled_range). Use null to honor enabled_range.
+  profile: null
   # Maximum number of tests to run in parallel.
   # Combined with OMP_NUM_THREADS this controls total core usage.
   # For example: max_parallel=2 and OMP_NUM_THREADS=4 → up to ~8 threads.
   max_parallel: 2
-
   env:
     # If OMP_NUM_THREADS is not set here, it will be chosen automatically as:
     #   max(1, num_cores / max_parallel)
     # You can uncomment the next line to override the automatic value.
     # OMP_NUM_THREADS: 4
-    OMP_STACKSIZE: "512M"        # Default OpenMP stack size
-    BDF_TMPDIR: "/tmp/$RANDOM"   # Scratch directory template
+    OMP_STACKSIZE: "512M"   # Default OpenMP stack size
+    BDF_TMPDIR: "/tmp/$RANDOM"  # Scratch directory template (use $RANDOM for unique dirs)
+    # BDF_WORKDIR: "/path/to/workdir"  # Optional: working directory for run-input command
+                                      # If not set, uses input file's directory
   
   # Pattern-based test discovery
   # Tests will be automatically discovered from test*.inp files
-  input_pattern: "test*.inp"         # Pattern for input files in test_dir
-  reference_pattern: "test*.check"   # Pattern for reference files in reference_dir (e.g. tests/check/test002.check)
-  check_pattern: "test*.check"       # Pattern for extracted check data files in build/check
+  input_pattern: "test*.inp"  # Pattern for input files in test_dir
+  reference_pattern: "test*.check"  # Pattern for reference files in reference_dir (e.g. tests/check/test002.check)
+  check_pattern: "test*.check"  # Pattern for extracted check data files in build/check
   
   # Test execution configuration
   # Command to run the program (executed from source_dir)
   # The command will be called with input file as argument
   test_command: "{BDFHOME}/sbin/bdfdrv.py"  # Executable path (template supports {BDFHOME})
-  test_args_template: "-r {input_file}"     # Template for test arguments (no redirection; handled by runner)
+  test_args_template: "-r {input_file}"  # Template for test arguments (no redirection; handled by runner)
   
   # Result extraction from log files
   # After running a test, extract results using: grep CHECKDATA test*.log > test*.check
   log_file_pattern: "test*.log"  # Pattern for log files generated in build/check
   result_extraction:
-    method: "grep"               # Method to extract results
-    pattern: "CHECKDATA"         # Pattern to search for in log files
+    method: "grep"  # Method to extract results
+    pattern: "CHECKDATA"  # Pattern to search for in log files
     # The extracted build/check/test*.check file will be compared with the reference tests/check/test*.check
 
 reporting:
@@ -185,4 +173,3 @@ logging:
   level: "INFO"  # DEBUG, INFO, WARNING, ERROR
   log_dir: "./logs"
   log_file: "autotest_{timestamp}.log"
-

@@ -260,7 +260,7 @@ def run_input_command(
     Run a calculation with an input file directly, printing stdout/stderr to console.
     
     Args:
-        input_file: Path to input file
+        input_file: Path to input file (can be absolute or relative)
         config_path: Path to configuration file
     """
     import subprocess
@@ -284,11 +284,94 @@ def run_input_command(
         print("Please run the full workflow first (without --skip-build) to build the package.")
         return 1
     
-    # Resolve input file path
-    input_path = Path(input_file).resolve()
-    if not input_path.exists():
+    # Resolve input file path - try multiple approaches
+    input_path = None
+    tried_paths = []
+    
+    # First try as absolute path
+    if os.path.isabs(input_file):
+        input_path = Path(input_file)
+        tried_paths.append(str(input_path))
+        if not input_path.exists():
+            # Try with /Users instead of /User if that's the issue (common typo)
+            if input_file.startswith("/User/"):
+                alt_path = Path(input_file.replace("/User/", "/Users/", 1))
+                tried_paths.append(str(alt_path))
+                if alt_path.exists():
+                    input_path = alt_path
+                    print(f"Note: Corrected path from /User/ to /Users/: {input_path}")
+    
+    # If not absolute or not found, try as relative path
+    if input_path is None or not input_path.exists():
+        input_path = Path(input_file)
+        if not input_path.is_absolute():
+            # Try relative to current working directory
+            cwd_path = Path.cwd() / input_file
+            tried_paths.append(str(cwd_path))
+            if cwd_path.exists():
+                input_path = cwd_path
+            else:
+                # Try relative to source_dir
+                source_path = source_dir / input_file
+                tried_paths.append(str(source_path))
+                if source_path.exists():
+                    input_path = source_path
+                else:
+                    # Try as-is (might be relative to something else)
+                    tried_paths.append(str(input_path))
+    
+    # Final check - input file must exist, otherwise do not execute
+    if not input_path or not input_path.exists():
         print(f"Error: Input file not found: {input_file}")
+        print(f"\nTried the following paths:")
+        for path in tried_paths:
+            exists = "✓" if Path(path).exists() else "✗"
+            print(f"  {exists} {path}")
+        print(f"\nPlease provide the correct path to the input file.")
+        print(f"Current working directory: {Path.cwd()}")
+        print(f"\nCalculation will not be executed without a valid input file.")
         return 1
+    
+    # Validate input file extension - must be .inp
+    if input_path.suffix.lower() != ".inp":
+        print(f"Error: Input file must have .inp extension")
+        print(f"  Provided file: {input_path}")
+        print(f"  File extension: {input_path.suffix}")
+        print(f"\nPlease provide a file with .inp extension (e.g., test.inp)")
+        return 1
+    
+    print(f"✓ Using input file: {input_path}")
+    
+    # Get working directory and temporary directory from config
+    # Allow user to specify BDF_WORKDIR and BDF_TMPDIR in config
+    env_cfg = tests_cfg.get("env", {})
+    
+    # Determine working directory: use input file's directory or config BDF_WORKDIR
+    workdir_cfg = env_cfg.get("BDF_WORKDIR")
+    if workdir_cfg:
+        work_dir = Path(workdir_cfg).resolve()
+        if not work_dir.exists():
+            print(f"Warning: BDF_WORKDIR from config does not exist: {workdir_cfg}")
+            print(f"Using input file directory instead: {input_path.parent}")
+            work_dir = input_path.parent
+    else:
+        # Use input file's directory as working directory
+        work_dir = input_path.parent
+    
+    # Determine temporary directory: use config BDF_TMPDIR or system temp
+    tmpdir_cfg = env_cfg.get("BDF_TMPDIR")
+    if tmpdir_cfg:
+        # Support $RANDOM placeholder
+        if "$RANDOM" in tmpdir_cfg:
+            rnd = random.randint(0, 999999)
+            tmp_dir = Path(tmpdir_cfg.replace("$RANDOM", str(rnd)))
+        else:
+            tmp_dir = Path(tmpdir_cfg)
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        # Use system temporary directory
+        import tempfile
+        tmp_dir = Path(tempfile.gettempdir())
     
     # Build command using test configuration
     test_command_template = tests_cfg.get("test_command", "{BDFHOME}/sbin/bdfdrv.py")
@@ -303,49 +386,104 @@ def run_input_command(
     # Prepare environment
     env = os.environ.copy()
     env["BDFHOME"] = str(bdf_home)
-    
-    # Create temporary directory for this run
-    env_cfg = tests_cfg.get("env", {})
-    tmp_template = str(env_cfg.get("BDF_TMPDIR", "/tmp/$RANDOM"))
-    rnd = random.randint(0, 999999)
-    tmp_dir = Path(tmp_template.replace("$RANDOM", str(rnd)))
-    tmp_dir.mkdir(parents=True, exist_ok=True)
+    env["BDF_WORKDIR"] = str(work_dir)
     env["BDF_TMPDIR"] = str(tmp_dir)
     
     # OpenMP settings
     env["OMP_NUM_THREADS"] = str(env_cfg.get("OMP_NUM_THREADS", os.cpu_count() or 1))
     env["OMP_STACKSIZE"] = str(env_cfg.get("OMP_STACKSIZE", "512M"))
     
-    # Copy input file to working directory (build/check)
-    check_dir = build_dir / "check"
-    check_dir.mkdir(parents=True, exist_ok=True)
-    working_input = check_dir / input_path.name
-    shutil.copy2(input_path, working_input)
+    # Add any other environment variables from config
+    for key, value in env_cfg.items():
+        if key not in {"BDF_TMPDIR", "BDF_WORKDIR", "OMP_NUM_THREADS", "OMP_STACKSIZE"}:
+            env[str(key)] = str(value)
+    
+    # Prepare log file paths (in working directory)
+    log_file = work_dir / f"{input_path.stem}.log"
+    err_file = work_dir / f"{input_path.stem}.err"
     
     try:
-        # Run the command and stream output directly
-        print(f"Running: {' '.join(command)}")
+        # Run the command and capture output
+        print("\n" + "=" * 80)
+        print("BDF Calculation")
+        print("=" * 80)
+        print(f"Command: {' '.join(command)}")
         print(f"Input file: {input_path}")
-        print(f"Working directory: {check_dir}")
-        print("-" * 80)
+        print(f"Working directory: {work_dir}")
+        print(f"BDFHOME: {bdf_home}")
+        print(f"BDF_WORKDIR: {work_dir}")
+        print(f"BDF_TMPDIR: {tmp_dir}")
+        print(f"Stdout log: {log_file}")
+        print(f"Stderr log: {err_file}")
+        print("=" * 80)
+        print()
         
-        process = subprocess.run(
-            command,
-            cwd=check_dir,
-            env=env,
-            check=False,
-        )
+        # Run command and capture both stdout and stderr
+        with open(log_file, "w", encoding="utf-8") as log_f, \
+             open(err_file, "w", encoding="utf-8") as err_f:
+            process = subprocess.run(
+                command,
+                cwd=work_dir,
+                env=env,
+                stdout=log_f,
+                stderr=err_f,
+                check=False,
+            )
         
-        print("-" * 80)
-        print(f"Exit code: {process.returncode}")
+        # Read and display the output
+        if log_file.exists():
+            log_content = log_file.read_text(encoding="utf-8", errors="replace")
+            print(log_content)
+        
+        if err_file.exists() and err_file.stat().st_size > 0:
+            err_content = err_file.read_text(encoding="utf-8", errors="replace")
+            if err_content.strip():
+                print("\n" + "=" * 80)
+                print("Standard Error Output:")
+                print("=" * 80)
+                print(err_content)
+        
+        print()
+        print("=" * 80)
+        print(f"Calculation completed with exit code: {process.returncode}")
+        if process.returncode == 0:
+            print("✓ Calculation succeeded")
+        else:
+            print("✗ Calculation failed")
+        print("=" * 80)
+        print(f"\nOutput files:")
+        print(f"  - Stdout: {log_file}")
+        print(f"  - Stderr: {err_file}")
+        
+        # Check for BDFOPT output file (test.out.tmp) - contains detailed module outputs
+        out_tmp_file = work_dir / f"{input_path.stem}.out.tmp"
+        if out_tmp_file.exists():
+            print(f"  - BDFOPT detailed output: {out_tmp_file}")
+            if process.returncode != 0:
+                print(f"    ⚠️  IMPORTANT: This file contains detailed BDF module outputs")
+                print(f"       and is essential for error analysis when calculation fails.")
+        
+        # Show other output files if they exist in working directory
+        output_files = list(work_dir.glob(f"{input_path.stem}.*"))
+        excluded_names = {input_path.name, log_file.name, err_file.name}
+        if out_tmp_file.exists():
+            excluded_names.add(out_tmp_file.name)
+        other_files = [f for f in output_files if f.name not in excluded_names]
+        if other_files:
+            print(f"\nOther output files generated in {work_dir}:")
+            for f in sorted(other_files):
+                print(f"  - {f.name}")
+        
         return process.returncode
     finally:
-        # Clean up temporary directory
-        try:
-            if tmp_dir.exists():
-                shutil.rmtree(tmp_dir)
-        except Exception:
-            pass
+        # Note: We don't clean up tmp_dir if it's from config (user may want to keep it)
+        # Only clean up if we created a random temp directory
+        if tmpdir_cfg and "$RANDOM" in tmpdir_cfg:
+            try:
+                if tmp_dir.exists():
+                    shutil.rmtree(tmp_dir)
+            except Exception:
+                pass
 
 
 def compare_reports_command(
