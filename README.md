@@ -63,42 +63,115 @@ BDFAutoTest/
 
 ### Compiler Configuration Example
 ```yaml
-build:
-  source_dir: "./package_source"
-  build_dir: "./build"
-  compilers:
-    fortran:
-      command: "gfortran"
-      flags: ["-O2", "-Wall", "-fPIC"]
-    c:
-      command: "gcc"
-      flags: ["-O2", "-Wall", "-std=c11"]
-    cpp:
-      command: "g++"
-      flags: ["-O2", "-Wall", "-std=c++17"]
-  build_command: "make"  # or "cmake", "configure && make", etc.
-  build_args: []
-
 git:
-  remote_url: "https://github.com/user/repo.git"
-  branch: "main"
+  # Root of the BDF source tree (where git clones into)
+  remote_url: "ssh://user@host:port/path/to/bdf-pkg"
+  branch: "master"
   local_path: "./package_source"
 
+build:
+  # Only two path-related options are needed:
+  # - git.local_path : root directory where git pulls the code
+  # - build_dir      : build directory inside that source_dir (relative path)
+  build_dir: "build"
+  build_command: "./setup"  # Run from source_dir
+
+  # Compiler combinations (choose one)
+  # Options: "gnu", "intel", "llvm"
+  compiler_set: "gnu"
+  compilers:
+    gnu:
+      fortran: "gfortran"
+      c: "gcc"
+      cpp: "g++"
+    intel:
+      fortran: "ifx"
+      c: "icx"
+      cpp: "icpx"
+    llvm:
+      fortran: "Flang"
+      c: "clang"
+      cpp: "clang++"
+
+  # Math library configuration
+  # Option 1: Use MKL library
+  use_mkl: false  # Set to true if you want BDF to link against MKL
+  mkl_option: "TBB"  # Value for --mkl option (ignored if use_mkl: false)
+
+  # Option 2: Custom math library (configure below)
+  math_library:
+    # Example placeholders; replace with your LAPACK/BLAS installation paths
+    mathinclude_flags: "-I/path/to/lapack/include -I/path/to/cblas/include"
+    mathlib_flags: "-L/path/to/lapack/lib -llapack -lblas -lcblas -llapacke"
+    blasdir: "/path/to/blas"
+    lapackdir: "/path/to/lapack"
+
+  # Build mode
+  # Options: "release", "debug"
+  build_mode: "release"
+
+  # Preserve build directory (if true, don't remove existing build dir before setup)
+  preserve_build: false
+
+  # Always used options
+  always_use:
+    - "--int64"
+    - "--omp"
+
+  # Additional build arguments (optional)
+  additional_args: []
+
+compile:
+  # working_dir is derived automatically as: build.source_dir/build.build_dir
+  command: "make"
+  jobs: "auto"
+  target: "install"
+  extra_args: []
+  log_file: "make.log"
+
 llm:
-  provider: "openai"  # or "anthropic", "local"
-  model: "gpt-4"
-  api_key_env: "OPENAI_API_KEY"
+  # Overall behavior:
+  # - local : only use local LLM
+  # - remote: only use remote LLM (e.g. OpenAI)
+  # - auto  : try local first, fall back to remote if local fails
+  mode: "auto"
+  analysis_mode: "simple"
   max_tokens: 2000
+  temperature: 0.3
+
+  local:
+    enabled: true
+    endpoint: "http://localhost:11434"
+    model: "my-local-llm"
+    timeout: 300
+
+  remote:
+    enabled: true
+    # Supported providers (all use OpenAI‑compatible chat completion APIs):
+    # - "openai"     → https://api.openai.com/v1/chat/completions
+    # - "openrouter" → https://openrouter.ai/api/v1/chat/completions
+    # - "deepseek"   → https://api.deepseek.com/chat/completions
+    # - "groq"       → https://api.groq.com/openai/v1/chat/completions
+    provider: "openai"
+    model: "gpt-4o"
+    # Environment variable holding your API key.
+    # For OpenAI, a common choice is OPENAI_API_KEY.
+    # For OpenRouter, you can set api_key_env: "OPENROUTER_API_KEY".
+    api_key_env: "OPENAI_API_KEY"
 
 tests:
-  test_dir: "./tests"
-  reference_dir: "./reference_data"
-  tolerance: 1e-6  # Numerical comparison tolerance
-  timeout: 3600    # Test timeout in seconds
+  # Test directories are relative to source_dir (inside the repository)
+  test_dir: "tests/input"
+  reference_dir: "tests/check"
+  tolerance: 1e-6
+  timeout: 3600
+  enabled_range:
+    min: 1
+    max: 161
 
 reporting:
   output_dir: "./reports"
-  format: ["html", "json"]  # Report formats
+  format: ["html", "json"]
 ```
 
 ## Workflow Design
