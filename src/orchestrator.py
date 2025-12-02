@@ -489,6 +489,68 @@ def run_input_command(
                 pass
 
 
+def run_single_test_command(
+    test_name: str,
+    config_path: str = "config/config.yaml",
+) -> int:
+    """
+    Run a single regression test by name (e.g. 'test149') without editing config.yaml.
+
+    This:
+    - Loads the existing config
+    - Assumes the package has already been built/compiled
+    - Uses TestRunner to discover all tests
+    - Executes only the requested test
+    - Prints a short summary to the console
+    """
+    from .config_loader import ConfigLoader
+    from .logger import setup_logger
+    from .test_runner import TestRunner
+
+    loader = ConfigLoader(config_path)
+    config = loader.load()
+
+    # For a single test run, ignore global enabled_range/profile filters so
+    # that we can access any test by name without editing config.yaml.
+    tests_cfg = config.setdefault("tests", {})
+    # Disable numeric range filter
+    tests_cfg["enabled_range"] = {}
+    # Disable active profile override
+    tests_cfg["profile"] = None
+    logger = setup_logger(config=config)
+
+    runner = TestRunner(config, logger=logger)
+    cases = runner.discover_tests()
+
+    # Normalize test name: accept either "test149" or "149"
+    if not test_name.startswith("test"):
+        normalized = f"test{test_name}"
+    else:
+        normalized = test_name
+
+    target = None
+    for case in cases:
+        if case.name == normalized:
+            target = case
+            break
+
+    if target is None:
+        logger.error("Requested test %s not found (normalized: %s)", test_name, normalized)
+        logger.error("Available tests include: %s ...", ", ".join(c.name for c in cases[:10]))
+        return 1
+
+    logger.info("Running single test: %s", target.name)
+    result = runner._run_test_case(target)  # use existing execution logic
+
+    status = "PASSED" if result.success else "FAILED"
+    logger.info("Single test %s %s (exit code %s)", target.name, status, result.exit_code)
+
+    if result.comparison and not result.comparison.matched:
+        logger.info("Comparison differences:\n%s", result.comparison.differences)
+
+    return 0 if result.success else 1
+
+
 def compare_reports_command(
     reports_dir: str = "./reports",
     before: Optional[str] = None,
@@ -568,6 +630,14 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     run_parser = subparsers.add_parser("run-input", help="Run a calculation with an input file directly")
     run_parser.add_argument("input_file", help="Path to input file")
     run_parser.add_argument("--config", default="config/config.yaml", help="Path to configuration file")
+
+    # Run a single regression test (by test name / id)
+    single_parser = subparsers.add_parser(
+        "run-test",
+        help="Run a single regression test (e.g. test149 or 149) without editing config.yaml",
+    )
+    single_parser.add_argument("test_name", help="Test name or numeric id (e.g. test149 or 149)")
+    single_parser.add_argument("--config", default="config/config.yaml", help="Path to configuration file")
     
     return parser.parse_args(argv)
 
@@ -585,6 +655,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.command == "run-input":
             return run_input_command(
                 input_file=args.input_file,
+                config_path=args.config,
+            )
+        elif args.command == "run-test":
+            return run_single_test_command(
+                test_name=args.test_name,
                 config_path=args.config,
             )
         else:

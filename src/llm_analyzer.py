@@ -9,11 +9,19 @@ Supports:
 
 import logging
 import os
+import re
 from typing import Dict, Any, Optional, List
 
 import requests
 
 from .models import BuildResult, TestResult, LLMAnalysis
+
+# Knowledge library: Known false positive patterns (non-errors that contain "error" keyword)
+# These patterns should not be treated as errors when found in logs
+FALSE_POSITIVE_PATTERNS = [
+    re.compile(r"(?i)IsOrthogonalizeDiisErrorMatrix\s*=", re.IGNORECASE),
+    # Add more false positive patterns here as needed
+]
 
 
 class LLMAnalyzer:
@@ -431,9 +439,13 @@ class LLMAnalyzer:
         if error_text:
             lines.append("**Error Messages:**")
             # Extract key error lines (non-empty, likely errors)
-            error_lines = [line.strip() for line in error_text.splitlines() 
-                          if line.strip() and any(keyword in line.lower() 
-                          for keyword in ['error', 'failed', 'fatal', 'undefined', 'cannot'])]
+            # Filter out false positives (known non-errors)
+            error_lines = [
+                line.strip() for line in error_text.splitlines() 
+                if line.strip() and any(keyword in line.lower() 
+                for keyword in ['error', 'failed', 'fatal', 'undefined', 'cannot'])
+                and not any(pattern.search(line) for pattern in FALSE_POSITIVE_PATTERNS)
+            ]
             if error_lines:
                 for line in error_lines[:10]:  # Limit to first 10 error lines
                     lines.append(f"- {line}")
@@ -542,6 +554,9 @@ class LLMAnalyzer:
         for line in error_text.splitlines():
             line_lower = line.lower()
             if any(keyword in line_lower for keyword in ['error', 'failed', 'fatal', 'segmentation', 'abort', 'crash', 'return code']):
+                # Skip false positives (known non-errors)
+                if any(pattern.search(line) for pattern in FALSE_POSITIVE_PATTERNS):
+                    continue
                 error_lines.append(line.strip())
         
         if error_lines:

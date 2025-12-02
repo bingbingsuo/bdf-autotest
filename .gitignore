@@ -20,6 +20,7 @@ build/
 reports/
 logs/
 reference_data/
+bdf-pkg-full
 
 # IDE
 .vscode/

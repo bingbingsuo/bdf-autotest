@@ -213,36 +213,47 @@ class TestRunner:
             if key not in {"BDF_TMPDIR", "OMP_NUM_THREADS", "OMP_STACKSIZE"}:
                 env[str(key)] = str(value)
 
-        process = subprocess.run(
-            case.command,
-            cwd=self.check_dir,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=self.timeout,
-            check=False,
-        )
+        # Run BDF so that its stdout/stderr are written directly to the per‑test
+        # log file in the working directory.
+        #
+        # NOTE:
+        # - Some BDF inputs (e.g. test149) execute shell commands like
+        #   "% $BDFHOME/sbin/plotspec.py ... $BDFTASK" which expect the BDF
+        #   output file to exist on disk as "$BDFTASK.out" or "$BDFTASK.log".
+        # - If we captured stdout/stderr in memory instead of a real file,
+        #   these helper scripts would fail with "cannot open the BDF output file".
+        # - By streaming output directly into "testXXX.log" under the check
+        #   directory, the file exists during the run and tools like
+        #   "plotspec.py" can read it successfully.
+        case.log_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(case.log_file, "w", encoding="utf-8") as log_f:
+            process = subprocess.run(
+                case.command,
+                cwd=self.check_dir,
+                env=env,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
+                timeout=self.timeout,
+                check=False,
+                text=True,
+            )
 
         duration = time.monotonic() - start_time
 
+        # We already streamed all output to the log file, which downstream
+        # components (error parser, LLM analyzer, report generator) read
+        # directly. To keep memory usage reasonable for long runs, we do not
+        # duplicate the full log contents into stdout/stderr here.
         test_result = TestResult(
             success=process.returncode == 0,
             command=case.command,
             cwd=str(self.source_dir),
             exit_code=process.returncode,
-            stdout=process.stdout,
-            stderr=process.stderr,
+            stdout="",
+            stderr="",
             duration=duration,
             test_case=case,
         )
-
-        case.log_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(case.log_file, "w", encoding="utf-8") as log_f:
-            log_f.write(process.stdout or "")
-        if process.stderr:
-            with open(case.log_file, "a", encoding="utf-8") as log_f:
-                log_f.write("\n--- STDERR ---\n")
-                log_f.write(process.stderr)
 
         check_file = self._extract_check_file(case)
         # Use specialized CHECKDATA comparison with per-key tolerances

@@ -42,6 +42,13 @@ class ErrorEventParser:
     
     FILE_LINE_PATTERN = re.compile(r'([^:]+):(\d+)(?::(\d+))?')
     
+    # Knowledge library: Known false positive patterns (non-errors that contain "error" keyword)
+    # These patterns should not be treated as errors when found in logs
+    FALSE_POSITIVE_PATTERNS = [
+        re.compile(r'(?i)IsOrthogonalizeDiisErrorMatrix\s*=', re.IGNORECASE),
+        # Add more false positive patterns here as needed
+    ]
+    
     def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger("bdf_autotest.error_parser")
     
@@ -269,12 +276,22 @@ class ErrorEventParser:
         
         return ErrorCategory.OTHER
     
+    def _is_false_positive(self, line: str) -> bool:
+        """Check if a line matches a known false positive pattern (non-error)"""
+        for pattern in self.FALSE_POSITIVE_PATTERNS:
+            if pattern.search(line):
+                return True
+        return False
+    
     def _extract_primary_message(self, error_text: str, error_type: ErrorType) -> str:
         """Extract the primary error message"""
         lines = error_text.split('\n')
         
-        # Look for lines with "error" keyword
-        error_lines = [line.strip() for line in lines if 'error' in line.lower()]
+        # Look for lines with "error" keyword, excluding false positives
+        error_lines = [
+            line.strip() for line in lines 
+            if 'error' in line.lower() and not self._is_false_positive(line)
+        ]
         if error_lines:
             # Return first substantial error line
             for line in error_lines:
@@ -297,6 +314,9 @@ class ErrorEventParser:
         for line in lines:
             line_lower = line.lower()
             if any(kw in line_lower for kw in keywords):
+                # Skip false positives (known non-errors)
+                if self._is_false_positive(line):
+                    continue
                 stripped = line.strip()
                 if stripped and len(stripped) > 10:
                     details.append(stripped)

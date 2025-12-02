@@ -14,6 +14,13 @@ ERROR_PATTERNS = {
     "linker": re.compile(r"(?i)ld:|linker"),
 }
 
+# Knowledge library: Known false positive patterns (non-errors that contain "error" keyword)
+# These patterns should not be treated as errors when found in logs
+FALSE_POSITIVE_PATTERNS = [
+    re.compile(r"(?i)IsOrthogonalizeDiisErrorMatrix\s*=", re.IGNORECASE),
+    # Add more false positive patterns here as needed
+]
+
 
 class CompilationAnalyzer:
     """Parse build output and categorize failures"""
@@ -39,10 +46,20 @@ class CompilationAnalyzer:
         self.logger.debug("Compilation analysis: %s", analysis)
         return analysis
 
+    def _is_false_positive(self, line: str) -> bool:
+        """Check if a line matches a known false positive pattern (non-error)"""
+        for pattern in FALSE_POSITIVE_PATTERNS:
+            if pattern.search(line):
+                return True
+        return False
+
     def _collect_error_snippets(self, lines: List[str], limit: int = 20) -> List[str]:
         snippets = []
         for line in lines:
             if "error" in line.lower():
+                # Skip false positives (known non-errors)
+                if self._is_false_positive(line):
+                    continue
                 snippets.append(line.strip())
             if len(snippets) >= limit:
                 break
