@@ -1,0 +1,283 @@
+## Configuration Manual (`config/config.yaml`)
+
+This document explains all sections and keys in `config/config.yaml` and how
+they affect the BDF Auto Test Framework.
+
+The best starting point is `config/config.yaml.example`, which you can copy and
+customize:
+
+```bash
+cp config/config.yaml.example config/config.yaml
+```
+
+---
+
+### 1. `git` – Source Code Location
+
+```yaml
+git:
+  remote_url: "ssh://user@host:port/path/to/bdf-pkg"
+  branch: "master"
+  local_path: "./package_source"
+```
+
+- **`remote_url`**: SSH/HTTPS URL of the BDF repository.
+- **`branch`**: Branch to track (e.g. `master`, `main`, or feature branch).
+- **`local_path`**: Directory where the repository is cloned locally.
+
+The orchestrator uses this to run `git pull` (unless `--skip-git` is set).
+
+---
+
+### 2. `build` – How to Configure and Build BDF
+
+```yaml
+build:
+  build_dir: "build"
+  build_command: "./setup"
+  compiler_set: "gnu"
+  compilers:
+    gnu:
+      fortran: "gfortran"
+      c: "gcc"
+      cpp: "g++"
+    intel:
+      fortran: "ifx"
+      c: "icx"
+      cpp: "icpx"
+    llvm:
+      fortran: "Flang"
+      c: "clang"
+      cpp: "clang++"
+  use_mkl: false
+  mkl_option: "TBB"
+  math_library:
+    mathinclude_flags: "-I/path/to/lapack/include -I/path/to/cblas/include"
+    mathlib_flags: "-L/path/to/lapack/lib -llapack -lblas -lcblas -llapacke"
+    blasdir: "/path/to/blas"
+    lapackdir: "/path/to/lapack"
+  build_mode: "release"
+  preserve_build: false
+  always_use:
+    - "--int64"
+    - "--omp"
+  additional_args: []
+```
+
+- **Paths**
+  - `build_dir`: Subdirectory under `git.local_path` where CMake/build files live (e.g. `package_source/build`).
+  - `build_command`: Command run in `source_dir` to configure the build (often `./setup`).
+
+- **Compilers**
+  - `compiler_set`: One of `gnu`, `intel`, `llvm`. Controls which compiler triplet the setup script uses.
+  - `compilers`: Optional overrides for Fortran/C/C++ executable names per compiler set.
+
+- **Math Libraries**
+  - `use_mkl`: `true` to use Intel MKL, `false` to use a custom BLAS/LAPACK.
+  - `mkl_option`: Forwarded as `--mkl=<value>` to the setup script when `use_mkl: true`.
+  - `math_library.*`: Paths and flags for custom BLAS/LAPACK when not using MKL.
+
+- **Build Mode and Behavior**
+  - `build_mode`: `release` or `debug`.
+  - `preserve_build`: If `true`, the existing `build_dir` is kept between runs. Useful for development.
+  - `always_use`: Flags always passed to the setup script (e.g. `--int64`, `--omp`).
+  - `additional_args`: Extra flags appended to the setup command for experiments.
+
+---
+
+### 3. `compile` – How to Run `make`
+
+```yaml
+compile:
+  command: "make"
+  jobs: "auto"
+  target: "install"
+  extra_args: []
+  log_file: "make.log"
+  environment: {}
+```
+
+- `command`: Base compile command (usually `make`).
+- `jobs`: Number of parallel jobs for `-j`.  
+  - `"auto"` (or `null`) → detect from CPU count.
+  - Integer (e.g. `8`) → use `-j8`.
+- `target`: Make target to build (e.g. `install`).
+- `extra_args`: Additional arguments appended to the make command.
+- `log_file`: Name of the file capturing stdout/stderr from the compile step.
+- `environment`: Extra environment variables for the compile step (rarely needed).
+
+---
+
+### 4. `llm` – Local/Remote LLM Configuration
+
+```yaml
+llm:
+  mode: "auto"           # local | remote | auto
+  analysis_mode: "simple"  # simple | detailed
+  max_tokens: 2000
+  temperature: 0.3
+
+  local:
+    enabled: true
+    endpoint: "http://localhost:11434"
+    model: "my-local-llm"
+    timeout: 300
+
+  remote:
+    enabled: true
+    provider: "openai"   # openai | openrouter | deepseek | groq
+    model: "gpt-4o"
+    api_key_env: "OPENAI_API_KEY"
+```
+
+- **Top-level behavior**
+  - `mode`:
+    - `local`: use only the local LLM.
+    - `remote`: use only the remote LLM.
+    - `auto`: try local first, fall back to remote if local fails.
+  - `analysis_mode`:
+    - `simple`: no LLM call; extract and summarize errors quickly.
+    - `detailed`: call LLM for full analysis (slower, requires keys).
+  - `max_tokens`, `temperature`: standard LLM generation controls.
+
+- **Local LLM**
+  - `local.enabled`: enable/disable local LLM use.
+  - `endpoint`: HTTP URL for the local LLM (e.g. Ollama).
+  - `model`: model name recognized by your local endpoint.
+  - `timeout`: per-request timeout in seconds.
+
+- **Remote LLM**
+  - `remote.enabled`: enable/disable remote LLM.
+  - `provider`: which OpenAI-compatible service to use.
+  - `model`: provider-specific model name (e.g. `gpt-4o`).
+  - `api_key_env`: environment variable that stores the API key (e.g. `OPENAI_API_KEY`).
+
+---
+
+### 5. `tests` – Regression Test Settings
+
+```yaml
+tests:
+  test_dir: "tests/input"
+  reference_dir: "tests/check"
+  tolerance: 1e-6
+  timeout: 3600
+  enabled_range:
+    min: 1
+    max: 161
+  tolerance_mode: "strict"        # strict | loose
+  tolerance_scale:
+    strict: 1.0
+    loose: 5.0
+  profiles:
+    smoke:
+      min: 1
+      max: 5
+    core:
+      min: 1
+      max: 20
+    full:
+      min: 1
+      max: 161
+  profile: null
+  max_parallel: 2
+  env:
+    # OMP_NUM_THREADS (optional override)
+    OMP_STACKSIZE: "512M"
+    BDF_TMPDIR: "/tmp/$RANDOM"
+    # BDF_WORKDIR: "/path/to/workdir"
+
+  input_pattern: "test*.inp"
+  reference_pattern: "test*.check"
+  check_pattern: "test*.check"
+
+  test_command: "{BDFHOME}/sbin/bdfdrv.py"
+  test_args_template: "-r {input_file}"
+
+  log_file_pattern: "test*.log"
+  result_extraction:
+    method: "grep"
+    pattern: "CHECKDATA"
+```
+
+- **Directories and discovery**
+  - `test_dir`: Where `test*.inp` live (relative to BDF source).
+  - `reference_dir`: Where `test*.check` reference files live.
+  - `input_pattern`: Glob for input files.
+  - `reference_pattern`, `check_pattern`: Globs for reference and generated `.check` files.
+
+- **Which tests to run**
+  - `enabled_range.min/max`: Numeric range for `testNNN`.
+  - `profiles`: Named subsets (e.g. `smoke`, `core`, `full`) that define their own min/max.
+  - `profile`:
+    - `null`: use `enabled_range`.
+    - `"smoke"`, `"core"`, etc.: use the corresponding profile range.
+
+- **Execution**
+  - `test_command`: Executable used to run each test. `{BDFHOME}` is substituted with the actual BDF installation path.
+  - `test_args_template`: Arguments, formatted with `{input_file}` (file name only).
+  - `timeout`: Per-test timeout in seconds.
+  - `max_parallel`: How many tests to run concurrently.
+
+- **Environment**
+  - `env.OMP_NUM_THREADS`:
+    - If omitted, automatically chosen as roughly `num_cores / max_parallel`.
+  - `env.OMP_STACKSIZE`: OpenMP stack size (e.g. `512M`).
+  - `env.BDF_TMPDIR`: Template for scratch directories (supports `$RANDOM` so each run gets its own directory).
+  - `env.BDF_WORKDIR`:
+    - Optional work directory for the `run-input` command.
+    - If not set, `run-input` uses the input file’s directory by default.
+
+- **Result extraction**
+  - `log_file_pattern`: Pattern for test logs.
+  - `result_extraction.method`: Currently `grep`-style extraction.
+  - `result_extraction.pattern`: Line substring (`CHECKDATA`) used to build `.check` files from logs.
+
+---
+
+### 6. `reporting` – Reports & Error Events
+
+```yaml
+reporting:
+  output_dir: "./reports"
+  format: ["html", "json"]
+  include_llm_analysis: true
+  timestamp_format: "%Y-%m-%d_%H-%M-%S"
+  structured_events_dir: "./reports/error_events"
+  save_error_events: true
+```
+
+- `output_dir`: Where reports are written.
+- `format`: List of formats to generate (`html`, `json`).
+- `include_llm_analysis`: If `true`, embed LLM analysis text into reports when available.
+- `timestamp_format`: Controls the timestamp in report filenames.
+- `structured_events_dir`: Directory where JSON error events are stored.
+- `save_error_events`: Enable/disable saving of per-error JSON records.
+
+---
+
+### 7. `logging` – Framework Logs
+
+```yaml
+logging:
+  level: "INFO"                # DEBUG | INFO | WARNING | ERROR
+  log_dir: "./logs"
+  log_file: "autotest_{timestamp}.log"
+```
+
+- `level`: Minimum log level to emit.
+- `log_dir`: Directory for log files.
+- `log_file`: Filename pattern, usually including `{timestamp}`.
+
+---
+
+### 8. Tips for Customizing `config.yaml`
+
+- Start from `config.yaml.example` and change **only one section at a time**.
+- Verify each stage:
+  1. Git + build (`--skip-tests`)
+  2. Single `run-input` with a small input file
+  3. A few regression tests via a narrow `enabled_range` or `run-test`
+- Once everything is stable, widen the test range or use the `full` profile.
+
+

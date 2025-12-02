@@ -349,7 +349,9 @@ def run_input_command(
     # Allow user to specify BDF_WORKDIR and BDF_TMPDIR in config
     env_cfg = tests_cfg.get("env", {})
     
-    # Determine working directory: use input file's directory or config BDF_WORKDIR
+    # Determine working directory for a single BDF run:
+    # - Prefer tests.env.BDF_WORKDIR if it exists
+    # - Otherwise, use the directory where the input file is located
     workdir_cfg = env_cfg.get("BDF_WORKDIR")
     if workdir_cfg:
         work_dir = Path(workdir_cfg).resolve()
@@ -358,7 +360,7 @@ def run_input_command(
             print(f"Using input file directory instead: {input_path.parent}")
             work_dir = input_path.parent
     else:
-        # Use input file's directory as working directory
+        # Default: use the input file's directory as working directory
         work_dir = input_path.parent
     
     # Determine temporary directory: use config BDF_TMPDIR or system temp
@@ -383,7 +385,24 @@ def run_input_command(
     command_str = test_command_template.replace("{BDFHOME}", str(bdf_home))
     command = shlex.split(command_str)
     test_args_template_list = shlex.split(test_args_template)
-    args = [arg.format(input_file=input_path.name) for arg in test_args_template_list]
+    # Use only the input file name inside the working directory. If the working
+    # directory is different from the input file directory, copy the input file
+    # *and all related support files* (same stem, different extensions), so BDF
+    # can find everything it needs (e.g. test075.inp, test075.extcharge, etc.)
+    input_name = input_path.name
+    stem = input_path.stem
+    if input_path.parent != work_dir:
+        try:
+            # Copy all files matching stem.* into the work directory
+            for src in input_path.parent.glob(f"{stem}.*"):
+                dst = work_dir / src.name
+                try:
+                    shutil.copy2(src, dst)
+                except Exception as exc:
+                    print(f"Warning: Failed to copy {src} to work directory: {exc}")
+        except Exception as exc:
+            print(f"Warning: Failed to copy support files to work directory: {exc}")
+    args = [arg.format(input_file=input_name) for arg in test_args_template_list]
     command.extend(args)
     
     # Prepare environment

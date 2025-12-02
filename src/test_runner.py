@@ -115,8 +115,19 @@ class TestRunner:
                     if max_id is not None and idx > max_id:
                         continue
 
+            # Copy the main input file and any support files with the same stem
+            # into the build/check directory. This ensures tests that require
+            # extra files (e.g. test075.inp + test075.extcharge) work correctly.
             check_input = self.check_dir / input_file.name
             shutil.copy2(input_file, check_input)
+            try:
+                for support in input_file.parent.glob(f"{name}.*"):
+                    if support.name == input_file.name:
+                        continue
+                    shutil.copy2(support, self.check_dir / support.name)
+            except Exception:
+                # Non‑fatal; missing support files will show up as regular test failures
+                self.logger.debug("Failed to copy some support files for %s", name)
 
             log_name = wildcard_to_name(self.log_pattern, name)
             log_file = self.check_dir / log_name

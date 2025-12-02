@@ -326,6 +326,25 @@ python3 -m src.orchestrator run-input /Users/bsuo/check/bdf/h2o.inp --config con
 - Uses input file's directory as working directory
 - Configurable `BDF_WORKDIR` and `BDF_TMPDIR` in config
 
+#### Run a Single Regression Test
+
+Sometimes you only want to rerun one test from the regression suite (for example, after editing BDF code affecting a specific module).  
+Use the `run-test` subcommand instead of changing `config.yaml` ranges:
+
+```bash
+# Run a single test by full name
+python3 -m src.orchestrator run-test test149 --config config/config.yaml
+
+# Or by numeric id (auto-normalized to test149)
+python3 -m src.orchestrator run-test 149 --config config/config.yaml
+```
+
+**Behavior:**
+- Uses the existing configuration from `config/config.yaml` (no need to edit `tests.enabled_range`).
+- Discovers all tests, then executes **only** the requested one.
+- Reuses the same environment and comparison logic as the full regression run.
+- Prints a concise pass/fail summary and, on failure, the detailed CHECKDATA differences.
+
 #### Compare Test Reports
 ```bash
 # Compare latest 2 reports
