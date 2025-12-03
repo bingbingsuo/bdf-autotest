@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 from .models import BuildResult
+from .utils import find_python_interpreter, fix_python_shebangs
 
 
 class CompileManager:
@@ -28,6 +29,9 @@ class CompileManager:
         )
         self.working_dir = Path(compile_cfg.get("working_dir", default_working_dir)).resolve()
         self.command = compile_cfg.get("command", "make")
+        
+        python_cfg = build_cfg.get("python_interpreter")
+        self.python_interpreter = find_python_interpreter(python_cfg) if python_cfg else find_python_interpreter()
 
         # Determine number of parallel jobs:
         # - if compile.jobs is omitted / null / "auto": derive from CPU count
@@ -100,6 +104,11 @@ class CompileManager:
 
         if result.success:
             self.logger.info("Compilation completed successfully in %.2fs", duration)
+            install_dir = self.working_dir / "bdf-pkg-full"
+            if install_dir.exists():
+                fixed_count = fix_python_shebangs(install_dir, self.python_interpreter, self.logger)
+                if fixed_count > 0:
+                    self.logger.info("Fixed %d Python script shebang(s) after compilation", fixed_count)
         else:
             self.logger.error("Compilation failed with exit code %s", process.returncode)
         return result

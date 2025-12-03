@@ -2,8 +2,11 @@
 Utility helpers shared across modules
 """
 
+import logging
+import re
+import shutil
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 def resolve_source_path(source_dir: Path, relative_path: str) -> Path:
@@ -49,4 +52,106 @@ def derive_test_paths(
     log_file = resolve_source_path(source_dir, f"{test_dir}/{log_name}")
     reference_file = resolve_source_path(source_dir, f"{reference_dir}/{ref_name}")
     return log_file, reference_file
+
+
+def find_python_interpreter(preferred: Optional[str] = None) -> str:
+    """
+    Find a suitable Python interpreter.
+    
+    Returns:
+        Path to Python interpreter
+    """
+    if preferred:
+        preferred_path = Path(preferred)
+        if preferred_path.exists() and preferred_path.is_file():
+            return str(preferred_path)
+        found = shutil.which(preferred)
+        if found:
+            return found
+    
+    python3 = shutil.which("python3")
+    if python3:
+        return python3
+    
+    python = shutil.which("python")
+    if python:
+        return python
+    
+    for path in ["/usr/bin/python3", "/usr/local/bin/python3"]:
+        if Path(path).exists():
+            return path
+    
+    return "python3"
+
+
+def fix_python_shebangs(
+    install_dir: Path,
+    python_interpreter: str,
+    logger: Optional[logging.Logger] = None,
+) -> int:
+    """
+    Fix hardcoded Python shebang lines in installed scripts.
+    
+    Args:
+        install_dir: Root directory of installed package
+        python_interpreter: Python interpreter to use
+        logger: Optional logger for messages
+    
+    Returns:
+        Number of files fixed
+    """
+    if logger is None:
+        logger = logging.getLogger("bdf_autotest.utils")
+    
+    if not install_dir.exists():
+        logger.warning("Install directory does not exist: %s", install_dir)
+        return 0
+    
+    if Path(python_interpreter).is_absolute():
+        new_shebang = f"#!{python_interpreter}"
+    else:
+        cmd_name = Path(python_interpreter).name
+        new_shebang = f"#!/usr/bin/env {cmd_name}"
+    
+    # Patterns to match old shebangs
+    old_patterns = [
+        re.compile(rb'^#!/usr/bin/python\s'),
+        re.compile(rb'^#!/usr/bin/python\s+-u\s'),
+        re.compile(rb'^#!/usr/bin/env\s+python\s'),
+        re.compile(rb'^#!/usr/bin/env\s+python\s+-u\s'),
+    ]
+    
+    fixed_count = 0
+    
+    # Find all Python scripts
+    for py_file in install_dir.rglob("*.py"):
+        try:
+            with open(py_file, "rb") as f:
+                first_line = f.readline()
+            
+            needs_fix = any(pattern.match(first_line) for pattern in old_patterns)
+            
+            if needs_fix:
+                with open(py_file, "rb") as f:
+                    content = f.read()
+                
+                lines = content.split(b"\n", 1)
+                if len(lines) > 1:
+                    new_content = new_shebang.encode("utf-8") + b"\n" + lines[1]
+                else:
+                    new_content = new_shebang.encode("utf-8") + b"\n"
+                
+                with open(py_file, "wb") as f:
+                    f.write(new_content)
+                
+                fixed_count += 1
+                logger.debug("Fixed shebang in: %s", py_file.relative_to(install_dir))
+        
+        except Exception as e:
+            logger.warning("Failed to fix shebang in %s: %s", py_file, e)
+    
+    if fixed_count > 0:
+        logger.info("Fixed Python shebang in %d script(s) using: %s", fixed_count, new_shebang)
+    
+    return fixed_count
 

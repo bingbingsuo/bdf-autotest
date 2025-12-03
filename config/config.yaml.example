@@ -12,12 +12,11 @@ build:
   # - git.local_path : root directory where git pulls the code
   # - build_dir      : build directory inside that source_dir (relative path)
   build_dir: "build"
-  # Command to initialize/configure the build (run from source_dir)
   build_command: "./setup"
   
   # Compiler combinations (choose one)
-  # Options: "gnu", "intel", "llvm"
-  compiler_set: "gnu"
+  # Option 1: GNU compilers
+  compiler_set: "gnu"  # Options: "gnu", "intel", "llvm"
   compilers:
     gnu:
       fortran: "gfortran"
@@ -39,19 +38,20 @@ build:
   
   # Option 2: Custom math library (configure below)
   math_library:
-    # Example placeholders; replace with your LAPACK/BLAS installation paths
     mathinclude_flags: "-I/path/to/lapack/include -I/path/to/cblas/include"  # Value for --mathinclude-flags (fill in as needed)
     mathlib_flags: "-L/path/to/lapack/lib -llapack -lblas -lcblas -llapacke"       # Value for --mathlib-flags (fill in as needed)
     blasdir: "/path/to/blas"             # Value for --blasdir (fill in as needed)
     lapackdir: "/path/to/lapack"           # Value for --lapackdir (fill in as needed)
   
   # Build mode
-  # Options: "release", "debug"
-  build_mode: "release"
+  build_mode: "release"  # Options: "release", "debug"
   
   # Preserve build directory (if true, don't remove existing build dir before setup)
   # Useful for development: skip git/setup, just run make in build directory
   preserve_build: false  # Set to true to keep build directory between runs
+  
+  # Python interpreter configuration (auto-detects python3 if not set)
+  # python_interpreter: "python3"
   
   # Always used options
   always_use:
@@ -77,9 +77,9 @@ llm:
   # - auto  : try local first, fall back to remote if local fails
   mode: "auto"
   # Analysis mode:
-  # - simple: Extract basic info (failed tests, error messages, modules) without LLM call (default)
-  # - detailed: Use LLM for comprehensive analysis (requires LLM access)
-  analysis_mode: "simple"  # Options: "simple", "detailed"
+  # - simple: Extract basic info without LLM call
+  # - detailed: Use LLM for comprehensive analysis
+  analysis_mode: "simple"
   max_tokens: 2000
   temperature: 0.3  # Lower temperature for more deterministic analysis
 
@@ -97,10 +97,7 @@ llm:
     # - "deepseek"   → https://api.deepseek.com/chat/completions
     # - "groq"       → https://api.groq.com/openai/v1/chat/completions
     provider: "openai"
-    model: "gpt-4o"                 # Remote model name (provider-specific)
-    # Environment variable holding your API key.
-    # For OpenAI, a common choice is OPENAI_API_KEY.
-    # For OpenRouter, you can set api_key_env: "OPENROUTER_API_KEY" (or any other name you prefer).
+    model: "gpt-4o"
     api_key_env: "OPENAI_API_KEY"
 
 tests:

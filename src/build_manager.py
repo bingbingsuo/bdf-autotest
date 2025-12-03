@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 import shutil
 
 from .models import BuildResult
+from .utils import find_python_interpreter
 
 
 class BuildManager:
@@ -78,6 +79,14 @@ class BuildManager:
         always = self.build_cfg.get("always_use", [])
         return always if isinstance(always, list) else list(always)
 
+    def _python_args(self) -> List[str]:
+        """Get Python interpreter argument if configured"""
+        python_cfg = self.build_cfg.get("python_interpreter")
+        if python_cfg:
+            python_path = find_python_interpreter(python_cfg)
+            return [f"--python={python_path}"]
+        return []
+
     def _additional_args(self) -> List[str]:
         return self.build_cfg.get("additional_args", [])
 
@@ -87,6 +96,7 @@ class BuildManager:
         args.extend(self._math_args())
         args.extend(self._mode_args())
         args.extend(self._always_use_args())
+        args.extend(self._python_args())
         args.extend(self._additional_args())
 
         command_parts = shlex.split(self.build_command)
